@@ -1,4 +1,4 @@
-const express = require('express'); 
+const express = require('express');
 const cors = require('cors');
 
 const app = express();
@@ -22,12 +22,21 @@ const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology:
 
 
 
-async function run() { 
+async function run() {
     try {
-        
+
         const productCollection = client.db("BestDeal").collection("productCollection");
         const OrderCollection = client.db("BestDeal").collection("OrderHistory");
-        
+        const userCollection = client.db("BestDeal").collection("userCollection");
+        const reviewCollection = client.db("BestDeal").collection("reviewCollection");
+
+
+
+        app.get('/getusers', async (req, res) => {
+            const cursor = userCollection.find({})
+            const users = await cursor.toArray()
+            res.send(users)
+        })
 
         //get all products
         app.get('/products', async (req, res) => {
@@ -42,45 +51,68 @@ async function run() {
             res.send(result)
         })
 
-        // put date value to every product
-        app.put('/addstock', async (req, res) => {
-            const stock = true;
-            const query = { stock: stock }
-            const result = await productCollection.updateMany({}, { $set: query })
+        app.get('/orderhistory', async (req, res) => {
+            const cursor = OrderCollection.find({})
+            const orders = await cursor.toArray()
+            res.send(orders)
+        })
+
+        app.get('/get-review', async (req, res) => {
+            const cursor = reviewCollection.find({})
+            const reviews = await cursor.toArray()
+            res.send(reviews)
+        })
+
+        // delete many 
+        app.delete('/delete', async (req, res) => {
+            const ids = req.body.ids;
+            const objectIds = ids.map(id => new ObjectId(id));
+            const result = await productCollection.deleteMany({ _id: { $in: objectIds } });
+            res.send(result);
+        });
+
+
+
+
+        app.put('/update/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    name: req.body.name,
+                    price: req.body.price,
+                    stock: req.body.stock,
+                }
+            }
+            const result = await productCollection.updateOne(filter, updatedDoc, { upsert: false })
             res.json(result)
         })
-        app.put('/addSub', async (req, res) => {
-            const filter = { subcat: "mouse", brand: "hp" }
-            const updatedDoc = {
-                $set: { 
-                    brand: "razer"
-                }
-            }
-            const result = await productCollection.updateMany(filter, updatedDoc)
-            res.send(result)
-        })
-            
 
-        app.get('/search', async (req, res) => {
-            const name = req.query.name;
-            console.log(name);
-            let query = {}
-            if (req.query.name) {
-                query = {
-                    name: { $regex: name, $options: 'i' }
-                }
-            }
-            const result = await productCollection.find(query).toArray()
-            res.send(result)
-        })
+        // put date value to every product
+        // app.put('/addDate', async (req, res) => {
+        //     const date = new Date().toDateString()
+        //     const query = { date: date }
+        //     const result = await productCollection.updateMany({}, { $set: query })
+        //     res.json(result)
+        // })
+        // app.put('/addSub', async (req, res) => {
+        //     const filter = { subcat: "mouse", brand: "hp" }
+        //     const updatedDoc = {
+        //         $set: { 
+        //             brand: "razer"
+        //         }
+        //     }
+        //     const result = await productCollection.updateMany(filter, updatedDoc)
+        //     res.send(result)
+        // })
 
 
-        app.post('/create-payment-intent', async (req, res) => { 
-            const {price} = req.body;
-            console.log(typeof(price))
+
+
+
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
             const amount = price * 100;
-            console.log(amount)
-            console.log(typeof(amount))
 
             const paymentIntent = await stripe.paymentIntents.create({
                 currency: 'usd',
@@ -100,15 +132,139 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/orderhistory', async (req, res) => {
-            const cursor = OrderCollection.find({})
-            const orders = await cursor.toArray()
-            res.send(orders)
+        //review post
+        app.post('/post-review', async (req, res) => {
+            const review = req.body;
+            const result = await reviewCollection.insertOne(review)
+            console.log(result)
+            res.send(result)
         })
 
 
-        
-    }catch(err) {
+        app.post('/addproduct', async (req, res) => {
+            const data = req.body;
+            const result = await productCollection.insertOne(data)
+            res.send(result)
+        })
+
+
+        // get user info and save it in database 
+        app.post('/adduser', async (req, res) => {
+            const data = req.body;
+            const alldata = {
+                ...data,
+                date: new Date().toDateString()
+            }
+            const result = await userCollection.insertOne(alldata)
+            res.send(result)
+        })
+
+
+        app.put('/userdata', async (req, res) => {
+            try {
+                const email = req.body.email;
+
+                const cardnumber = req.body.cardnumber;
+
+                const filter = { email: email };
+
+                const update = {
+                    $set: {
+                        cardnumber: cardnumber,
+                    }
+                };
+                const options = { upsert: true };
+                const result = await userCollection.updateOne(filter, update, options);
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ error: 'An error occurred while updating the user information' });
+            }
+        });
+
+        app.put('/deliveryInfo', async (req, res) => {
+            try {
+                const email = req.body.email;
+
+                const address = req.body?.address;
+                const orderName = req.body?.orderName;
+                const contact = req.body?.contact;
+                const city = req.body?.city;
+
+                const filter = { email: email };
+
+                const update = {
+                    $set: {
+                        orderName: orderName,
+                        address: address,
+                        contact: contact,
+                        city: city
+                    }
+                };
+                const options = { upsert: true };
+                const result = await userCollection.updateOne(filter, update, options);
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ error: 'An error occurred while updating the user information' });
+            }
+        });
+
+
+
+
+        app.put('/orderstatus', async (req, res) => {
+            try {
+                const ids = req.body.ids;
+                const status = req.body.status;
+
+                const objectIds = ids.map(id => new ObjectId(id));
+                const filter = { _id: { $in: objectIds } };
+                const update = {
+                    $set: {
+                        shipment: status,
+                        orderStatus: true
+                    }
+                };
+                const options = { upsert: true };
+
+                const result = await OrderCollection.updateMany(filter, update, options);
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ error: 'An error occurred while updating the order status' });
+            }
+        });
+
+        app.put('/orderCancel', async (req, res) => {
+            try {
+                const ids = req.body.ids;
+                const status = req.body.status;
+
+                const objectIds = ids.map(id => new ObjectId(id));
+                const filter = { _id: { $in: objectIds } };
+                const update = { $set: { orderStatus: false } };
+                const options = { upsert: true };
+
+                const result = await OrderCollection.updateMany(filter, update, options);
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ error: 'An error occurred while updating the order status' });
+            }
+        });
+
+
+        app.delete('/deleteOrder', async (req, res) => {
+            const ids = req.body.ids;
+            const objectIds = ids.map(id => new ObjectId(id));
+            const result = await OrderCollection.deleteMany({ _id: { $in: objectIds } });
+            res.send(result);
+        });
+
+    } catch (err) {
         console.log(err)
     }
 
