@@ -5,7 +5,8 @@ const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 const port = process.env.PORT || 5000
-
+const NodeCache = require('node-cache');
+const myCache = new NodeCache({ stdTTL: 300 });
 
 
 app.use(express.json())
@@ -39,11 +40,111 @@ async function run() {
         })
 
         //get all products
+        // app.get('/products', async (req, res) => {
+        //     const cursor = productCollection.find({})
+        //     const products = await cursor.toArray()
+        //     res.send(products)
+        // })
+
         app.get('/products', async (req, res) => {
-            const cursor = productCollection.find({})
-            const products = await cursor.toArray()
-            res.send(products)
-        })
+            const cacheKey = 'products';
+
+            // Check if the result is in the cache
+            const cachedResult = myCache.get(cacheKey);
+            if (cachedResult) {
+                // If the result is in the cache, return it
+                return res.send(cachedResult);
+            }
+
+            // If the result is not in the cache, retrieve it from the database
+            const cursor = productCollection.find({});
+            const products = await cursor.toArray();
+
+            // Add the result to the cache for next time
+            myCache.set(cacheKey, products);
+
+            res.send(products);
+        });
+
+
+        //get all featured products
+        app.get('/featured', async (req, res) => {
+            const cursor = productCollection.find({ featured: true })
+                .limit(4); // limit to 4 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+
+        // get all latest products
+        app.get('/latest', async (req, res) => {
+            const cursor = productCollection.find()
+                .sort({ $natural: -1 }) // sort by natural order (oldest first)
+                .skip(productCollection.countDocuments() - 4) // skip all but the last 4 documents
+                .limit(4); // limit to 4 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+        //get all bestseller products
+        app.get('/bestseller', async (req, res) => {
+            const cursor = productCollection.find({ bestseller: true })
+                .limit(4); // limit to 4 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+        //get all special products
+        app.get('/special', async (req, res) => {
+            const cursor = productCollection.find({ special: true })
+                .limit(4); // limit to 4 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+        app.get('/latestItems', async (req, res) => {
+            const cursor = productCollection.find()
+                .sort({ $natural: -1 }) // sort by natural order (oldest first)
+                .limit(3); // limit to 3 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+        app.get('/backInStore', async (req, res) => {
+            const cursor = productCollection.find()
+                .sort({ $natural: -1 }) // sort by natural order (oldest first)
+                .limit(20); // limit to 3 results
+
+            const products = await cursor.toArray();
+            res.send(products);
+        });
+
+        // app.get('/products-by-category', async (req, res) => {
+        //     const { category } = req.query;
+
+        //     const cachedResult = myCache.get(category);
+        //     if (cachedResult) {
+        //         // If the result is in the cache, return it
+        //         res.send(cachedResult);
+        //     } else {
+        //         // If the result is not in the cache, retrieve it from the database
+        //         const cursor = productCollection.find({ cat: category });
+        //         const products = await cursor.toArray();
+
+        //         // Add the result to the cache for next time
+        //         myCache.set(category, products);
+
+        //         res.send(products);
+        //     }
+        // });
+
+
+
         app.get('/product/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
