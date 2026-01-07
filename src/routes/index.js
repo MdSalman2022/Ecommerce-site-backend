@@ -1,0 +1,88 @@
+const express = require('express');
+const router = express.Router();
+
+// Import all route modules
+const productRoutes = require('./productRoutes');
+const userRoutes = require('./userRoutes');
+const orderRoutes = require('./orderRoutes');
+const reviewRoutes = require('./reviewRoutes');
+const paymentRoutes = require('./paymentRoutes');
+const uploadRoutes = require('./uploadRoutes');
+const wishlistRoutes = require('./wishlistRoutes');
+const aiRoutes = require('./aiRoutes');
+const promoRoutes = require('./promoRoutes');
+
+// Import controllers for legacy routes
+const { productController, userController, orderController, reviewController, paymentController } = require('../controllers');
+
+/**
+ * API Routes Aggregator
+ * Centralizes all route mounting
+ */
+
+// ============================================
+// RESTful API Routes (new structure)
+// ============================================
+router.use('/products', productRoutes);
+router.use('/users', userRoutes);
+router.use('/orders', orderRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/upload', uploadRoutes);
+router.use('/wishlist', wishlistRoutes);
+router.use('/ai', aiRoutes);
+router.use('/promo', promoRoutes);
+
+// Health check endpoint
+router.get('/health', (req, res) => {
+    res.json({
+        success: true,
+        message: 'API is running',
+        timestamp: new Date().toISOString(),
+    });
+});
+
+// ============================================
+// Legacy Route Aliases (for backward compatibility)
+// These maintain the original API structure for frontend
+// ============================================
+
+/**
+ * @deprecated Use /api/products instead
+ */
+const legacyRoutes = express.Router();
+
+// Legacy product routes
+legacyRoutes.get('/products', productController.getAllProducts);
+legacyRoutes.get('/product/:id', productController.getProductById);
+legacyRoutes.get('/featured', productController.getFeaturedProducts);
+legacyRoutes.get('/latest', productController.getLatestProducts);
+legacyRoutes.get('/bestseller', productController.getBestsellerProducts);
+legacyRoutes.get('/special', productController.getSpecialProducts);
+legacyRoutes.get('/latestItems', productController.getLatestItems);
+legacyRoutes.get('/backInStore', productController.getBackInStore);
+legacyRoutes.post('/addproduct', productController.createProduct);
+legacyRoutes.put('/update/:id', productController.updateProduct);
+legacyRoutes.delete('/delete', productController.deleteProducts);
+
+// Legacy user routes
+legacyRoutes.get('/getusers', userController.getAllUsers);
+legacyRoutes.post('/adduser', userController.createUser);
+legacyRoutes.put('/userdata', userController.updateCardInfo);
+legacyRoutes.put('/deliveryInfo', userController.updateDeliveryInfo);
+
+// Legacy order routes
+legacyRoutes.get('/orderhistory', orderController.getAllOrders);
+legacyRoutes.post('/orderhistory', orderController.createOrder);
+legacyRoutes.put('/orderstatus', orderController.updateOrderStatus);
+legacyRoutes.put('/orderCancel', orderController.cancelOrders);
+legacyRoutes.delete('/deleteOrder', orderController.deleteOrders);
+
+// Legacy review routes
+legacyRoutes.get('/get-review', reviewController.getAllReviews);
+legacyRoutes.post('/post-review', reviewController.createReview);
+
+// Legacy payment routes
+legacyRoutes.post('/create-payment-intent', paymentController.createPaymentIntent);
+
+module.exports = { apiRoutes: router, legacyRoutes };

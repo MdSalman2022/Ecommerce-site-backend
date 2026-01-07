@@ -1,0 +1,17 @@
+/**
+ * Models Module Aggregator
+ * Centralizes all model exports
+ */
+const Product = require('./Product');
+const User = require('./User');
+const Order = require('./Order');
+const Review = require('./Review');
+const Wishlist = require('./Wishlist');
+
+module.exports = {
+    Product,
+    User,
+    Order,
+    Review,
+    Wishlist,
+};

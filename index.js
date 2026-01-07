@@ -1,381 +1,49 @@
-const express = require('express');
-const cors = require('cors');
-
-const app = express();
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-require('dotenv').config()
-const port = process.env.PORT || 5000
-const NodeCache = require('node-cache');
-const myCache = new NodeCache({ stdTTL: 300 });
-
-
-app.use(express.json())
-app.use(cors())
-
-
-app.get('/', async (req, res) => {
-    res.send('bestdeal portal server is running')
-})
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY)
-
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cwkrobe.mongodb.net/?retryWrites=true&w=majority`;
-const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
-
-
-
-async function run() {
-    try {
-
-        const productCollection = client.db("BestDeal").collection("productCollection");
-        const OrderCollection = client.db("BestDeal").collection("OrderHistory");
-        const userCollection = client.db("BestDeal").collection("userCollection");
-        const reviewCollection = client.db("BestDeal").collection("reviewCollection");
-
-
-
-        app.get('/getusers', async (req, res) => {
-            const cursor = userCollection.find({})
-            const users = await cursor.toArray()
-            res.send(users)
-        })
-
-        //get all products
-        // app.get('/products', async (req, res) => {
-        //     const cursor = productCollection.find({})
-        //     const products = await cursor.toArray()
-        //     res.send(products)
-        // })
-
-        app.get('/products', async (req, res) => {
-            const cacheKey = 'products';
-
-            // Check if the result is in the cache
-            const cachedResult = myCache.get(cacheKey);
-            if (cachedResult) {
-                // If the result is in the cache, return it
-                return res.send(cachedResult);
-            }
-
-            // If the result is not in the cache, retrieve it from the database
-            const cursor = productCollection.find({});
-            const products = await cursor.toArray();
-
-            // Add the result to the cache for next time
-            myCache.set(cacheKey, products);
-
-            res.send(products);
-        });
-
-
-        //get all featured products
-        app.get('/featured', async (req, res) => {
-            const cursor = productCollection.find({ featured: true })
-                .limit(4); // limit to 4 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-
-        // get all latest products
-        app.get('/latest', async (req, res) => {
-            const cursor = productCollection.find()
-                .sort({ $natural: -1 }) // sort by natural order (oldest first)
-                .skip(productCollection.countDocuments() - 4) // skip all but the last 4 documents
-                .limit(4); // limit to 4 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-        //get all bestseller products
-        app.get('/bestseller', async (req, res) => {
-            const cursor = productCollection.find({ bestseller: true })
-                .limit(4); // limit to 4 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-        //get all special products
-        app.get('/special', async (req, res) => {
-            const cursor = productCollection.find({ special: true })
-                .limit(4); // limit to 4 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-        app.get('/latestItems', async (req, res) => {
-            const cursor = productCollection.find()
-                .sort({ $natural: -1 }) // sort by natural order (oldest first)
-                .limit(3); // limit to 3 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-        app.get('/backInStore', async (req, res) => {
-            const cursor = productCollection.find()
-                .sort({ $natural: -1 }) // sort by natural order (oldest first)
-                .limit(20); // limit to 3 results
-
-            const products = await cursor.toArray();
-            res.send(products);
-        });
-
-        // app.get('/products-by-category', async (req, res) => {
-        //     const { category } = req.query;
-
-        //     const cachedResult = myCache.get(category);
-        //     if (cachedResult) {
-        //         // If the result is in the cache, return it
-        //         res.send(cachedResult);
-        //     } else {
-        //         // If the result is not in the cache, retrieve it from the database
-        //         const cursor = productCollection.find({ cat: category });
-        //         const products = await cursor.toArray();
-
-        //         // Add the result to the cache for next time
-        //         myCache.set(category, products);
-
-        //         res.send(products);
-        //     }
-        // });
-
-
-
-        app.get('/product/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: new ObjectId(id) }
-            const result = await productCollection.findOne(query)
-            res.send(result)
-        })
-
-        app.get('/orderhistory', async (req, res) => {
-            const cursor = OrderCollection.find({})
-            const orders = await cursor.toArray()
-            res.send(orders)
-        })
-
-        app.get('/get-review', async (req, res) => {
-            const cursor = reviewCollection.find({})
-            const reviews = await cursor.toArray()
-            res.send(reviews)
-        })
-
-        // delete many 
-        app.delete('/delete', async (req, res) => {
-            const ids = req.body.ids;
-            const objectIds = ids.map(id => new ObjectId(id));
-            const result = await productCollection.deleteMany({ _id: { $in: objectIds } });
-            res.send(result);
-        });
-
-
-
-
-        app.put('/update/:id', async (req, res) => {
-            const id = req.params.id;
-            const filter = { _id: new ObjectId(id) }
-            const updatedDoc = {
-                $set: {
-                    name: req.body.name,
-                    price: req.body.price,
-                    stock: req.body.stock,
-                }
-            }
-            const result = await productCollection.updateOne(filter, updatedDoc, { upsert: false })
-            res.json(result)
-        })
-
-        // put date value to every product
-        // app.put('/addDate', async (req, res) => {
-        //     const date = new Date().toDateString()
-        //     const query = { date: date }
-        //     const result = await productCollection.updateMany({}, { $set: query })
-        //     res.json(result)
-        // })
-        // app.put('/addSub', async (req, res) => {
-        //     const filter = { subcat: "mouse", brand: "hp" }
-        //     const updatedDoc = {
-        //         $set: { 
-        //             brand: "razer"
-        //         }
-        //     }
-        //     const result = await productCollection.updateMany(filter, updatedDoc)
-        //     res.send(result)
-        // })
-
-
-
-
-
-        app.post('/create-payment-intent', async (req, res) => {
-            const { price } = req.body;
-            const amount = price * 100;
-
-            const paymentIntent = await stripe.paymentIntents.create({
-                currency: 'usd',
-                amount: amount,
-                "payment_method_types": [
-                    "card"
-                ],
-            })
-            res.send({
-                clientSecret: paymentIntent.client_secret,
-            });
-        })
-
-        app.post('/orderhistory', async (req, res) => {
-            const order = req.body;
-            const result = await OrderCollection.insertOne(order)
-            res.send(result)
-        })
-
-        //review post
-        app.post('/post-review', async (req, res) => {
-            const review = req.body;
-            const result = await reviewCollection.insertOne(review)
-            console.log(result)
-            res.send(result)
-        })
-
-
-        app.post('/addproduct', async (req, res) => {
-            const data = req.body;
-            const result = await productCollection.insertOne(data)
-            res.send(result)
-        })
-
-
-        // get user info and save it in database 
-        app.post('/adduser', async (req, res) => {
-            const data = req.body;
-            const alldata = {
-                ...data,
-                date: new Date().toDateString()
-            }
-            const result = await userCollection.insertOne(alldata)
-            res.send(result)
-        })
-
-
-        app.put('/userdata', async (req, res) => {
-            try {
-                const email = req.body.email;
-
-                const cardnumber = req.body.cardnumber;
-
-                const filter = { email: email };
-
-                const update = {
-                    $set: {
-                        cardnumber: cardnumber,
-                    }
-                };
-                const options = { upsert: true };
-                const result = await userCollection.updateOne(filter, update, options);
-                res.send(result);
-            } catch (error) {
-                console.error(error);
-                res.status(500).send({ error: 'An error occurred while updating the user information' });
-            }
-        });
-
-        app.put('/deliveryInfo', async (req, res) => {
-            try {
-                const email = req.body.email;
-
-                const address = req.body?.address;
-                const orderName = req.body?.orderName;
-                const contact = req.body?.contact;
-                const city = req.body?.city;
-
-                const filter = { email: email };
-
-                const update = {
-                    $set: {
-                        orderName: orderName,
-                        address: address,
-                        contact: contact,
-                        city: city
-                    }
-                };
-                const options = { upsert: true };
-                const result = await userCollection.updateOne(filter, update, options);
-                res.send(result);
-            } catch (error) {
-                console.error(error);
-                res.status(500).send({ error: 'An error occurred while updating the user information' });
-            }
-        });
-
-
-
-
-        app.put('/orderstatus', async (req, res) => {
-            try {
-                const ids = req.body.ids;
-                const status = req.body.status;
-
-                const objectIds = ids.map(id => new ObjectId(id));
-                const filter = { _id: { $in: objectIds } };
-                const update = {
-                    $set: {
-                        shipment: status,
-                        orderStatus: true
-                    }
-                };
-                const options = { upsert: true };
-
-                const result = await OrderCollection.updateMany(filter, update, options);
-
-                res.send(result);
-            } catch (error) {
-                console.error(error);
-                res.status(500).send({ error: 'An error occurred while updating the order status' });
-            }
-        });
-
-        app.put('/orderCancel', async (req, res) => {
-            try {
-                const ids = req.body.ids;
-                const status = req.body.status;
-
-                const objectIds = ids.map(id => new ObjectId(id));
-                const filter = { _id: { $in: objectIds } };
-                const update = { $set: { orderStatus: false } };
-                const options = { upsert: true };
-
-                const result = await OrderCollection.updateMany(filter, update, options);
-
-                res.send(result);
-            } catch (error) {
-                console.error(error);
-                res.status(500).send({ error: 'An error occurred while updating the order status' });
-            }
-        });
-
-
-        app.delete('/deleteOrder', async (req, res) => {
-            const ids = req.body.ids;
-            const objectIds = ids.map(id => new ObjectId(id));
-            const result = await OrderCollection.deleteMany({ _id: { $in: objectIds } });
-            res.send(result);
-        });
-
-    } catch (err) {
-        console.log(err)
-    }
-
-}
-
-
-run().catch(console.log)
-
-
-
-
-
-app.listen(port, () => console.log(`bestdea portal is running on ${port}`))
+require('dotenv').config();
+
+const app = require('./src/app');
+const { connectDB, closeDB } = require('./src/config/database');
+
+const PORT = process.env.PORT || 5000;
+
+/**
+ * Server Entry Point
+ * Connects to database and starts the Express server
+ */
+const startServer = async () => {
+  try {
+    // Connect to MongoDB
+    await connectDB();
+
+    // Start server
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 BestDeal Server running on port ${PORT}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+
+    // Graceful shutdown handling
+    const gracefulShutdown = async (signal) => {
+      console.log(`\n${signal} received. Shutting down gracefully...`);
+
+      server.close(async () => {
+        console.log('HTTP server closed');
+        await closeDB();
+        process.exit(0);
+      });
+
+      // Force close after 10 seconds
+      setTimeout(() => {
+        console.error('Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
