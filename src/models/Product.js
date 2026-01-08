@@ -96,6 +96,15 @@ const productSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        // Product variants for size/color options with specific pricing and stock
+        variants: [{
+            color: { type: String, trim: true },
+            size: { type: String, trim: true },
+            price: { type: Number },           // variant-specific price (optional)
+            stock: { type: Number, default: 0 },
+            sku: { type: String, trim: true },
+            image: { type: String, trim: true } // variant-specific image (optional)
+        }],
     },
     {
         timestamps: true,
