@@ -1,19 +1,19 @@
 const mongoose = require('mongoose');
 
-/**
- * Database connection configuration
- * Handles MongoDB connection with retry logic and event logging
- */
 const connectDB = async () => {
     try {
+        const poolMax = parseInt(process.env.DB_POOL_MAX) || 10;
+        const poolMin = parseInt(process.env.DB_POOL_MIN) || 5;
+
         const conn = await mongoose.connect(process.env.MONGODB_URI, {
-            maxPoolSize: 10,
-            minPoolSize: 5,
+            maxPoolSize: poolMax,
+            minPoolSize: poolMin,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
         });
 
-        console.log(`MongoDB Connected: ${conn.connection.host}`);
+        console.log(`MongoDB Connected: ${conn.connection.host} (Pool: ${poolMin}-${poolMax})`);
 
-        // Connection event handlers
         mongoose.connection.on('error', (err) => {
             console.error(`MongoDB connection error: ${err}`);
         });
@@ -33,9 +33,6 @@ const connectDB = async () => {
     }
 };
 
-/**
- * Graceful shutdown handler for database connection
- */
 const closeDB = async () => {
     try {
         await mongoose.connection.close();
@@ -46,3 +43,4 @@ const closeDB = async () => {
 };
 
 module.exports = { connectDB, closeDB };
+

@@ -2,11 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-/**
- * User Schema
- * Enhanced with Passport.js authentication support
- * Supports local (email/password), Google, and Facebook auth
- */
+// User Schema: Extended with Passport.js, OAuth, and RBAC support
 const userSchema = new mongoose.Schema(
     {
         name: {
@@ -49,7 +45,7 @@ const userSchema = new mongoose.Schema(
         },
         role: {
             type: String,
-            enum: ['user', 'admin'],
+            enum: ['user', 'moderator', 'admin'],
             default: 'user',
         },
         // Session management
@@ -89,15 +85,11 @@ const userSchema = new mongoose.Schema(
     }
 );
 
-// ============================================
 // Indexes
-// ============================================
 userSchema.index({ email: 1 });
 userSchema.index({ authProvider: 1, providerId: 1 });
 
-// ============================================
 // Pre-save middleware - Hash password
-// ============================================
 userSchema.pre('save', async function (next) {
     // Only hash if password is modified
     if (!this.isModified('password')) return next();
@@ -114,23 +106,14 @@ userSchema.pre('save', async function (next) {
     }
 });
 
-// ============================================
 // Instance Methods
-// ============================================
 
-/**
- * Compare password with hashed password
- * @param {string} candidatePassword - Plain text password
- * @returns {Promise<boolean>}
- */
+// Compare password with hashed password
 userSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-/**
- * Generate JWT access token
- * @returns {string} JWT token
- */
+// Generate JWT access token
 userSchema.methods.generateAuthToken = function () {
     return jwt.sign(
         { 
@@ -143,10 +126,7 @@ userSchema.methods.generateAuthToken = function () {
     );
 };
 
-/**
- * Generate refresh token
- * @returns {string} Refresh token
- */
+// Generate refresh token
 userSchema.methods.generateRefreshToken = function () {
     const refreshToken = jwt.sign(
         { id: this._id },
@@ -157,10 +137,7 @@ userSchema.methods.generateRefreshToken = function () {
     return refreshToken;
 };
 
-/**
- * Get public profile (exclude sensitive data)
- * @returns {Object}
- */
+// Get public profile (exclude sensitive data)
 userSchema.methods.toPublicJSON = function () {
     return {
         _id: this._id,
