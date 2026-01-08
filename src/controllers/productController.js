@@ -1,4 +1,5 @@
 const { Product } = require('../models');
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const { ApiResponse, ApiError } = require('../utils/ApiResponse');
 const { clearCache } = require('../middleware/cacheMiddleware');
@@ -102,12 +103,48 @@ const getBackInStore = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const createProduct = asyncHandler(async (req, res) => {
-    const product = await Product.create(req.body);
+    const productData = req.body;
+    
+    // Check if we need to create variants
+    if (productData.hasVariants && productData.variantOptions && productData.variantOptions.length > 0) {
+        
+        // 1. Generate a common Group ID
+        const variantGroupId = new mongoose.Types.ObjectId();
+        
+        // 2. Parse Options (Currently handling 1st dimension for simplicity, can be expanded)
+        // e.g. [{ name: "Color", values: "Red, Blue" }]
+        const primaryOption = productData.variantOptions[0];
+        const optionName = primaryOption.name;
+        const optionValues = primaryOption.values.split(',').map(v => v.trim()).filter(v => v);
+        
+        const createdProducts = [];
+        
+        for (const val of optionValues) {
+             const variantPayload = {
+                 ...productData,
+                 name: `${productData.name} - ${val}`,
+                 variantGroupId: variantGroupId,
+                 variantAttributes: { [optionName]: val },
+                 // Ensure each variant has unique URL/Slug/ID distinctness if needed
+             };
+             
+             // Remove meta-fields that define the group
+             delete variantPayload.variantOptions;
+             delete variantPayload.hasVariants;
+             
+             const product = await Product.create(variantPayload);
+             createdProducts.push(product);
+        }
+        
+        clearCache('products');
+        res.status(201).json({ message: `Created ${createdProducts.length} variants`, products: createdProducts });
 
-    // Clear products cache
-    clearCache('products');
-
-    res.status(201).json(product);
+    } else {
+        // Single product creation
+        const product = await Product.create(productData);
+        clearCache('products');
+        res.status(201).json(product);
+    }
 });
 
 /**

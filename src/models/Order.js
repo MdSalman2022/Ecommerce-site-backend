@@ -45,6 +45,11 @@ const orderSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        orderId: {
+            type: String,
+            unique: true,
+            sparse: true // Allows null/undefined for legacy orders
+        },
         address: {
             type: String,
             trim: true,
@@ -59,9 +64,14 @@ const orderSchema = new mongoose.Schema(
         },
         email: {
             type: String,
-            required: [true, 'Customer email is required'],
             trim: true,
             lowercase: true,
+            match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
+            // Email is optional for guest checkout, but if provided must be valid
+        },
+        isGuest: {
+            type: Boolean,
+            default: false,
         },
         transactionId: {
             type: String,
@@ -76,12 +86,17 @@ const orderSchema = new mongoose.Schema(
             type: String,
         },
         orderStatus: {
-            type: Boolean,
-            default: true,
-        },
-        shipment: {
             type: String,
+            enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'],
             default: 'pending',
+        },
+        // Courier / Shipment Info (Steadfast)
+        courierInfo: {
+            consignmentId: String,
+            invoice: String,
+            trackingCode: String,
+            status: String,
+            note: String,
         },
         promoCode: {
             type: String,
@@ -99,8 +114,10 @@ const orderSchema = new mongoose.Schema(
 );
 
 // Indexes for common queries
+orderSchema.index({ orderId: 1 });
 orderSchema.index({ email: 1 });
 orderSchema.index({ orderStatus: 1 });
+orderSchema.index({ 'courierInfo.trackingCode': 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

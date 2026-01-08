@@ -14,4 +14,7 @@ router.get('/users/:userId', authorize(PERMISSIONS.VIEW_ALL_USERS), adminControl
 router.put('/users/:userId/role', adminOnly, adminController.updateUserRole);
 router.delete('/users/:userId/role', adminOnly, adminController.removeUserRole);
 
+router.post('/order/courier', adminOnly, adminController.sendToCourier);
+router.post('/order/sync-courier', adminOnly, adminController.syncCourierStatus);
+
 module.exports = router;

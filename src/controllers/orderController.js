@@ -1,7 +1,7 @@
 const { Order } = require('../models');
 const asyncHandler = require('../utils/asyncHandler');
 const { ApiResponse, ApiError } = require('../utils/ApiResponse');
-const { sendOrderConfirmation, sendShippingUpdate } = require('../services/emailService');
+const emailService = require('../services/emailService');
 
 /**
  * @desc    Get all orders
@@ -44,16 +44,50 @@ const getOrderById = asyncHandler(async (req, res) => {
  * @route   POST /api/orders
  * @access  Private
  */
+/**
+ * Generate Custom Order ID
+ * Format: ORDYYYYMMDDXXXX (e.g., ORD202410050001)
+ */
+const generateOrderId = async () => {
+    const date = new Date();
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const todayPrefix = `ORD${yyyy}${mm}${dd}`;
+
+    // Find the last order created today
+    const lastOrder = await Order.findOne({ 
+        orderId: { $regex: new RegExp(`^${todayPrefix}`) } 
+    }).sort({ createdAt: -1 });
+
+    let nextNum = 1;
+    if (lastOrder && lastOrder.orderId) {
+        const currentStr = lastOrder.orderId.replace(todayPrefix, '');
+        const currentNum = parseInt(currentStr, 10);
+        if (!isNaN(currentNum)) {
+            nextNum = currentNum + 1;
+        }
+    }
+
+    const suffix = String(nextNum).padStart(4, '0');
+    return `${todayPrefix}${suffix}`;
+};
+
 const createOrder = asyncHandler(async (req, res) => {
-    const order = await Order.create(req.body);
+    const orderData = req.body;
+    
+    // Generate Custom Order ID
+    orderData.orderId = await generateOrderId();
+
+    const order = await Order.create(orderData);
     
     // Send order confirmation email (non-blocking)
     if (order.email) {
         const emailData = {
             email: order.email,
             name: order.name || 'Customer',
-            orderId: order._id.toString().slice(-8).toUpperCase(),
-            items: order.cart || [],
+            orderId: order.orderId, // Use the new custom ID
+            items: order.items || [], // Corrected field access
             total: (order.amount || 0) / 100, // Convert from cents
             discount: order.discountAmount || 0,
             promoCode: order.promoCode || null,
@@ -61,9 +95,9 @@ const createOrder = asyncHandler(async (req, res) => {
             city: order.city || '',
         };
         
-        sendOrderConfirmation(emailData)
+        emailService.sendOrderConfirmation(emailData)
             .then(result => {
-                if (result.success) {
+                if (result && result.success) {
                     console.log(`Order confirmation email sent to ${order.email}`);
                 }
             })
@@ -87,7 +121,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
     const result = await Order.updateMany(
         { _id: { $in: ids } },
-        { shipment: status, orderStatus: true }
+        { orderStatus: status } // Update orderStatus instead of shipment
     );
 
     // Send shipping update emails (non-blocking)
@@ -96,10 +130,10 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
             .then(orders => {
                 orders.forEach(order => {
                     if (order.email) {
-                        sendShippingUpdate({
+                        emailService.sendShippingUpdate({
                             email: order.email,
                             name: order.name || 'Customer',
-                            orderId: order._id.toString().slice(-8).toUpperCase(),
+                            orderId: order.orderId || order._id.toString().slice(-8).toUpperCase(),
                             status: status,
                         }).catch(err => console.error('Shipping update email error:', err));
                     }
