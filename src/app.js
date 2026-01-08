@@ -2,6 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+
+// Import Passport configuration
+const passport = require('./config/passport');
 
 // Import routes
 const { apiRoutes, legacyRoutes } = require('./routes');
@@ -42,14 +46,23 @@ app.use('/api', limiter);
 // ============================================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+
+// ============================================
+// Passport Initialization
+// ============================================
+app.use(passport.initialize());
+
 
 // ============================================
 // CORS Configuration
 // ============================================
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin === '*' ? true : corsOrigin.split(',').map(o => o.trim()),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true, // Required for cookies
 }));
 
 // ============================================

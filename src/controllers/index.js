@@ -7,6 +7,7 @@ const userController = require('./userController');
 const orderController = require('./orderController');
 const reviewController = require('./reviewController');
 const paymentController = require('./paymentController');
+const authController = require('./authController');
 
 module.exports = {
     productController,
@@ -14,4 +15,5 @@ module.exports = {
     orderController,
     reviewController,
     paymentController,
+    authController,
 };

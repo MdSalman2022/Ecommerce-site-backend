@@ -11,6 +11,7 @@ const uploadRoutes = require('./uploadRoutes');
 const wishlistRoutes = require('./wishlistRoutes');
 const aiRoutes = require('./aiRoutes');
 const promoRoutes = require('./promoRoutes');
+const authRoutes = require('./authRoutes');
 
 // Import controllers for legacy routes
 const { productController, userController, orderController, reviewController, paymentController } = require('../controllers');
@@ -23,6 +24,7 @@ const { productController, userController, orderController, reviewController, pa
 // ============================================
 // RESTful API Routes (new structure)
 // ============================================
+router.use('/auth', authRoutes);  // Auth routes first
 router.use('/products', productRoutes);
 router.use('/users', userRoutes);
 router.use('/orders', orderRoutes);
