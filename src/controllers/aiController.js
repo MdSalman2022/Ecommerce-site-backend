@@ -1,4 +1,4 @@
-const { getProductRecommendations, smartSearch, getAIChatResponse, analyzePurchaseHistory, getHistoryRecommendations } = require('../services/aiService');
+const { getProductRecommendations, smartSearch, getAIChatResponse, analyzePurchaseHistory, getHistoryRecommendations, generateProductDescription, generateProductTags } = require('../services/aiService');
 const asyncHandler = require('../utils/asyncHandler');
 
 /**
@@ -74,10 +74,38 @@ const getHistoryRecs = asyncHandler(async (req, res) => {
     res.json(result);
 });
 
+/**
+ * @desc    Generate product description
+ * @route   POST /api/ai/generate-description
+ * @access  Private
+ */
+const generateDescription = asyncHandler(async (req, res) => {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, error: 'Prompt is required' });
+
+    const result = await generateProductDescription(prompt);
+    res.json(result);
+});
+
+/**
+ * @desc    Generate product tags
+ * @route   POST /api/ai/generate-tags
+ * @access  Private
+ */
+const generateTags = asyncHandler(async (req, res) => {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, error: 'Prompt is required' });
+
+    const result = await generateProductTags(prompt);
+    res.json(result);
+});
+
 module.exports = {
     getRecommendations,
     aiSearch,
     chatAIChat,
     analyzeHistory,
     getHistoryRecs,
+    generateDescription,
+    generateTags,
 };

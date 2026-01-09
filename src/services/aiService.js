@@ -155,6 +155,32 @@ Return JSON:
   "suggestions": ["Suggested product 1", "Suggested product 2", "Suggested product 3"],
   "message": "Personalized, friendly recommendation message"
 }`,
+
+    /**
+     * Product Description Prompt
+     * Generates SEO-friendly descriptions
+     */
+    productDescription: (prompt) => `You are an expert e-commerce copywriter.
+    
+Write a compelling, SEO-friendly product description based on these details: "${prompt}"
+
+Instructions:
+- Highlight key features and benefits
+- Do NOT include intro/outro text, just the description`,
+
+    /**
+     * Product Tags Prompt
+     * Generates a comma-separated list of tags
+     */
+    productTags: (prompt) => `You are an SEO specialist.
+    
+Generate 5-8 relevant, high-traffic product tags for: "${prompt}"
+
+Instructions:
+- Output ONLY a comma-separated list of tags (e.g., Wireless, Bluetooth, Noise Cancelling, Gaming)
+- Do NOT include numbering, bullet points, or extra text
+- Keep tags concise (1-2 words mostly)
+- Focus on features, category, and use-case`,
 };
 
 /**
@@ -657,6 +683,40 @@ const getHistoryRecommendations = async (recentProductIds, limit = 4) => {
     }
 };
 
+/**
+ * Generate Product Description
+ * 
+ * @param {string} prompt - User prompt
+ * @returns {Promise<Object>} - Generated description
+ */
+const generateProductDescription = async (prompt) => {
+    try {
+        const description = await generateAIContent(PROMPTS.productDescription(prompt), 'primary');
+        return { success: true, description };
+    } catch (error) {
+        console.error('Description generation error:', error);
+        return { success: false, error: 'Failed to generate description' };
+    }
+};
+
+/**
+ * Generate Product Tags
+ * 
+ * @param {string} prompt - Product name and description
+ * @returns {Promise<Object>} - Generated tags array
+ */
+const generateProductTags = async (prompt) => {
+    try {
+        const text = await generateAIContent(PROMPTS.productTags(prompt), 'primary');
+        // Clean and split the response into an array
+        const tags = text.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+        return { success: true, tags };
+    } catch (error) {
+        console.error('Tag generation error:', error);
+        return { success: false, error: 'Failed to generate tags' };
+    }
+};
+
 // ============================================================================
 // MODULE EXPORTS
 // ============================================================================
@@ -668,6 +728,8 @@ module.exports = {
     getAIChatResponse,
     analyzePurchaseHistory,
     getHistoryRecommendations,
+    generateProductDescription,
+    generateProductTags,
     
     // Lower-level utilities (for advanced use)
     generateWithVision,

@@ -10,7 +10,14 @@ const { clearCache } = require('../middleware/cacheMiddleware');
  * @access  Public
  */
 const getAllProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 });
+    const { category } = req.query;
+    let query = {};
+
+    if (category) {
+        query.cat = category;
+    }
+
+    const products = await Product.find(query).sort({ createdAt: -1 });
     // Return plain array for frontend compatibility
     res.json(products);
 });
@@ -103,48 +110,46 @@ const getBackInStore = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const createProduct = asyncHandler(async (req, res) => {
-    const productData = req.body;
+    const { variantConfigs } = req.body; // Remove hasVariants from destructuring
+    let productData = { ...req.body };
     
-    // Check if we need to create variants
-    if (productData.hasVariants && productData.variantOptions && productData.variantOptions.length > 0) {
-        
-        // 1. Generate a common Group ID
-        const variantGroupId = new mongoose.Types.ObjectId();
-        
-        // 2. Parse Options (Currently handling 1st dimension for simplicity, can be expanded)
-        // e.g. [{ name: "Color", values: "Red, Blue" }]
-        const primaryOption = productData.variantOptions[0];
-        const optionName = primaryOption.name;
-        const optionValues = primaryOption.values.split(',').map(v => v.trim()).filter(v => v);
-        
-        const createdProducts = [];
-        
-        for (const val of optionValues) {
-             const variantPayload = {
-                 ...productData,
-                 name: `${productData.name} - ${val}`,
-                 variantGroupId: variantGroupId,
-                 variantAttributes: { [optionName]: val },
-                 // Ensure each variant has unique URL/Slug/ID distinctness if needed
-             };
-             
-             // Remove meta-fields that define the group
-             delete variantPayload.variantOptions;
-             delete variantPayload.hasVariants;
-             
-             const product = await Product.create(variantPayload);
-             createdProducts.push(product);
-        }
-        
-        clearCache('products');
-        res.status(201).json({ message: `Created ${createdProducts.length} variants`, products: createdProducts });
-
-    } else {
-        // Single product creation
-        const product = await Product.create(productData);
-        clearCache('products');
-        res.status(201).json(product);
+    // Auto-generate SKU if missing
+    if (!productData.sku || productData.sku.trim() === '') {
+        const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+        productData.sku = `SKU-${Date.now().toString().slice(-4)}-${randomSuffix}`;
     }
+    
+    // Handle products with variants
+    if (variantConfigs && variantConfigs.length > 0) {
+        // Map variantConfigs to variants array
+        productData.variants = variantConfigs.map(config => {
+            const variantSku = `${productData.sku}-${config.id}`;
+            
+            return {
+                attributes: config.attributes,
+                sku: variantSku,
+                regularPrice: config.regularPrice,
+                salePrice: config.salePrice,
+                costPrice: config.costPrice,
+                stock: config.stock,
+                images: config.images || []
+            };
+        });
+        
+        // Remove meta-fields that shouldn't be stored
+        delete productData.variantConfigs;
+    }
+    
+    // Ensure IDs are used if sent
+    if (req.body.category) productData.category = req.body.category;
+    if (req.body.subCategory) productData.subCategory = req.body.subCategory;
+
+    const product = await Product.create(productData);
+
+    // Clear cache
+    clearCache('products');
+
+    res.status(201).json(product);
 });
 
 /**
@@ -153,19 +158,45 @@ const createProduct = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const updateProduct = asyncHandler(async (req, res) => {
-    const { name, price, stock } = req.body;
-
-    const product = await Product.findByIdAndUpdate(
-        req.params.id,
-        { name, price, stock },
-        { new: true, runValidators: true }
-    );
+    let product = await Product.findById(req.params.id);
 
     if (!product) {
         throw new ApiError(404, 'Product not found');
     }
 
-    // Clear products cache
+    const productData = { ...req.body };
+    
+    // Handle variant product updates
+    if (productData.variantConfigs && productData.variantConfigs.length > 0) {
+        // Map variantConfigs to variants array
+        productData.variants = productData.variantConfigs.map(config => {
+            const variantSku = `${productData.sku}-${config.id}`;
+            
+            return {
+                attributes: config.attributes,
+                sku: variantSku,
+                regularPrice: config.regularPrice,
+                salePrice: config.salePrice,
+                costPrice: config.costPrice,
+                stock: config.stock,
+                images: config.images || []
+            };
+        });
+        
+        // Remove meta-fields
+        delete productData.variantConfigs;
+    }
+    
+    // Ensure IDs are used if sent
+    if (req.body.category) productData.category = req.body.category;
+    if (req.body.subCategory) productData.subCategory = req.body.subCategory;
+
+    product = await Product.findByIdAndUpdate(req.params.id, productData, {
+        new: true,
+        runValidators: true,
+    });
+
+    // Clear cache
     clearCache('products');
 
     res.json(product);

@@ -12,14 +12,33 @@ const productSchema = new mongoose.Schema(
             required: [true, 'Product name is required'],
             trim: true,
         },
+        description: {
+            type: String,
+            trim: true,
+        },
+        tags: {
+            type: [String],
+            default: [],
+            index: true,
+        },
         cat: {
             type: String,
             trim: true,
             index: true,
         },
+        category: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category',
+            index: true,
+        },
         subcat: {
             type: String,
             trim: true,
+            index: true,
+        },
+        subCategory: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category',
             index: true,
         },
         brand: {
@@ -35,16 +54,47 @@ const productSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        
         // Inventory & Variants
-        variantGroupId: {
-            type: String,
-            index: true, // properties with same groupId are variants of each other
-        },
-        variantAttributes: {
-             type: Map,
-             of: String, // e.g., { "color": "Red", "size": "XL" }
-             default: {}
-        },
+        // Inventory & Variants
+        // hasVariants and variantOptions are deprecated
+        // hasVariants: { ... },
+        // variantOptions: [{ ... }],
+        variants: [{
+            attributes: {
+                type: Map,
+                of: String      // e.g., { "Color": "Red", "Size": "M" }
+            },
+            sku: {
+                type: String,
+                trim: true
+            },
+            regularPrice: {
+                type: Number,
+                min: 0
+            },
+            salePrice: {
+                type: Number,
+                default: 0,
+                min: 0
+            },
+            costPrice: {
+                type: Number,
+                default: 0,
+                min: 0
+            },
+            stock: {
+                type: Number,
+                default: 0,
+                min: 0
+            },
+            images: {
+                type: [String],
+                default: []
+            }
+        }],
+        
+        // Main product inventory (used when hasVariants = false)
         stock: {
             type: Number,
             default: 0,

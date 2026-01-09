@@ -18,6 +18,8 @@ const cartRoutes = require('./cartRoutes');
 const cronRoutes = require('./cronRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const teamRoutes = require('./teamRoutes');
+const settingsRoutes = require('./settingsRoutes');
+const categoryRoutes = require('./categoryRoutes');
 
 const { productController, userController, orderController, reviewController, paymentController } = require('../controllers');
 
@@ -37,6 +39,8 @@ router.use('/wishlist', wishlistRoutes);
 router.use('/ai', aiRoutes);
 router.use('/promo', promoRoutes);
 router.use('/team', teamRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/categories', categoryRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

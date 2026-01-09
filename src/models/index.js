@@ -8,6 +8,8 @@ const Order = require('./Order');
 const Review = require('./Review');
 const Wishlist = require('./Wishlist');
 const AbandonedCart = require('./AbandonedCart');
+const StoreSettings = require('./SiteSettings');
+const Category = require('./Category');
 
 module.exports = {
     Product,
@@ -16,4 +18,6 @@ module.exports = {
     Review,
     Wishlist,
     AbandonedCart,
+    StoreSettings,
+    Category,
 };

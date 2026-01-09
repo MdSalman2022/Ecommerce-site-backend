@@ -1,4 +1,5 @@
 const { Order } = require('../models');
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const { ApiResponse, ApiError } = require('../utils/ApiResponse');
 const emailService = require('../services/emailService');
@@ -145,6 +146,26 @@ const createOrder = asyncHandler(async (req, res) => {
     }];
 
     const order = await Order.create(orderData);
+    
+    // Increment 'sells' count for each product
+    if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+             try {
+                // Determine the product/variant ID. 
+                // Assuming item.productId is the main product or variant ID
+                if (item.productId) {
+                    await mongoose.model('Product').findByIdAndUpdate(
+                        item.productId, 
+                        { 
+                            $inc: { sells: item.quantity, stock: -item.quantity } 
+                        }
+                    );
+                }
+             } catch (err) {
+                 console.error(`Failed to update stats for product ${item.productId}:`, err);
+             }
+        }
+    }
     
     // Send order confirmation email (non-blocking)
     if (order.email) {
