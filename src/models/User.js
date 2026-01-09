@@ -78,6 +78,38 @@ const userSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        // Push Notification tokens (FCM)
+        fcmTokens: [{
+            token: {
+                type: String,
+                required: true,
+            },
+            device: {
+                type: String,
+                enum: ['web', 'android', 'ios'],
+                default: 'web',
+            },
+            createdAt: {
+                type: Date,
+                default: Date.now,
+            },
+            lastUsed: Date,
+        }],
+        // Notification preferences
+        notificationPreferences: {
+            orderUpdates: {
+                type: Boolean,
+                default: true,
+            },
+            promotions: {
+                type: Boolean,
+                default: true,
+            },
+            newProducts: {
+                type: Boolean,
+                default: false,
+            },
+        },
     },
     {
         timestamps: true,

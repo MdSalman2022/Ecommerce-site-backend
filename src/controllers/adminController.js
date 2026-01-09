@@ -248,6 +248,26 @@ const syncCourierStatus = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @desc    Send low stock alert email to admin
+ * @route   POST /api/admin/inventory-alert
+ * @access  Private/Staff
+ */
+const sendInventoryAlert = asyncHandler(async (req, res) => {
+    const { products } = req.body;
+
+    if (!products || products.length === 0) {
+        return res.status(400).json({ success: false, message: 'No products provided' });
+    }
+
+    const result = await emailService.sendLowStockAlert(products);
+    
+    res.json({
+        success: result?.success || false,
+        message: result?.success ? 'Low stock alert sent successfully' : 'Failed to send alert'
+    });
+});
+
 module.exports = {
     getDashboardStatistics,
     getAllUsersWithRoles,
@@ -255,5 +275,6 @@ module.exports = {
     removeUserRole,
     getUserById,
     sendToCourier,
-    syncCourierStatus
+    syncCourierStatus,
+    sendInventoryAlert
 };

@@ -13,11 +13,20 @@ const aiRoutes = require('./aiRoutes');
 const promoRoutes = require('./promoRoutes');
 const authRoutes = require('./authRoutes');
 const adminRoutes = require('./adminRoutes');
+const analyticsRoutes = require('./analyticsRoutes');
+const cartRoutes = require('./cartRoutes');
+const cronRoutes = require('./cronRoutes');
+const notificationRoutes = require('./notificationRoutes');
+const teamRoutes = require('./teamRoutes');
 
 const { productController, userController, orderController, reviewController, paymentController } = require('../controllers');
 
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/cart', cartRoutes);
+router.use('/cron', cronRoutes);
+router.use('/notifications', notificationRoutes);
 router.use('/products', productRoutes);
 router.use('/users', userRoutes);
 router.use('/orders', orderRoutes);
@@ -27,6 +36,7 @@ router.use('/upload', uploadRoutes);
 router.use('/wishlist', wishlistRoutes);
 router.use('/ai', aiRoutes);
 router.use('/promo', promoRoutes);
+router.use('/team', teamRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

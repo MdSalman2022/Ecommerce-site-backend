@@ -15,6 +15,64 @@ const getAllOrders = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Search orders with filters
+ * @route   GET /api/orders/search
+ * @access  Private/Admin
+ */
+const searchOrders = asyncHandler(async (req, res) => {
+    const { query, status, dateFrom, dateTo } = req.query;
+    
+    let filter = {};
+    
+    // Text search (Order ID, name, phone)
+    if (query && query.trim()) {
+        const searchTerm = query.trim();
+        const cleanQuery = searchTerm.startsWith('#') ? searchTerm.slice(1) : searchTerm;
+        
+        // Determine search type
+        if (searchTerm.startsWith('#') || searchTerm.toLowerCase().startsWith('ord')) {
+            // Order ID search
+            filter.$or = [
+                { orderId: { $regex: cleanQuery, $options: 'i' } },
+                { _id: cleanQuery.length === 24 ? cleanQuery : undefined }
+            ].filter(Boolean);
+        } else if (/^[\+0-9]/.test(searchTerm)) {
+            // Phone number search
+            filter.contact = { $regex: searchTerm, $options: 'i' };
+        } else {
+            // Name search
+            filter.name = { $regex: searchTerm, $options: 'i' };
+        }
+    }
+    
+    // Status filter
+    if (status && status !== 'all') {
+        filter.orderStatus = status;
+    }
+    
+    // Date range filter
+    if (dateFrom || dateTo) {
+        filter.createdAt = {};
+        if (dateFrom) {
+            filter.createdAt.$gte = new Date(dateFrom);
+        }
+        if (dateTo) {
+            const endDate = new Date(dateTo);
+            endDate.setHours(23, 59, 59, 999);
+            filter.createdAt.$lte = endDate;
+        }
+    }
+    
+    const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(100);
+    
+    res.json({
+        success: true,
+        count: orders.length,
+        orders
+    });
+});
+
+/**
  * @desc    Get orders by email
  * @route   GET /api/orders/user/:email
  * @access  Private/Admin
@@ -79,6 +137,13 @@ const createOrder = asyncHandler(async (req, res) => {
     // Generate Custom Order ID
     orderData.orderId = await generateOrderId();
 
+    // Initialize status history with 'pending'
+    orderData.statusHistory = [{
+        status: 'pending',
+        timestamp: new Date(),
+        note: 'Order placed'
+    }];
+
     const order = await Order.create(orderData);
     
     // Send order confirmation email (non-blocking)
@@ -119,9 +184,19 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'Please provide order IDs');
     }
 
+    // Update status and push to history
     const result = await Order.updateMany(
         { _id: { $in: ids } },
-        { orderStatus: status } // Update orderStatus instead of shipment
+        { 
+            orderStatus: status,
+            $push: { 
+                statusHistory: {
+                    status: status,
+                    timestamp: new Date(),
+                    note: `Status changed to ${status}`
+                }
+            }
+        }
     );
 
     // Send shipping update emails (non-blocking)
@@ -182,12 +257,37 @@ const deleteOrders = asyncHandler(async (req, res) => {
     res.json({ deletedCount: result.deletedCount });
 });
 
+/**
+ * @desc    Get orders by phone number (for public tracking)
+ * @route   GET /api/orders/track/:phone
+ * @access  Public
+ */
+const getOrdersByPhone = asyncHandler(async (req, res) => {
+    const phone = req.params.phone;
+
+    if (!phone || phone.length < 10) {
+        throw new ApiError(400, 'Please provide a valid phone number');
+    }
+
+    const orders = await Order.find({ contact: phone })
+        .select('orderId orderStatus statusHistory items amount date courierInfo createdAt')
+        .sort({ createdAt: -1 });
+
+    res.json({
+        success: true,
+        count: orders.length,
+        orders
+    });
+});
+
 module.exports = {
     getAllOrders,
+    searchOrders,
     getOrdersByEmail,
     getOrderById,
     createOrder,
     updateOrderStatus,
     cancelOrders,
     deleteOrders,
+    getOrdersByPhone,
 };

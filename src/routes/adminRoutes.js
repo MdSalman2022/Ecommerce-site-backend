@@ -16,5 +16,6 @@ router.delete('/users/:userId/role', adminOnly, adminController.removeUserRole);
 
 router.post('/order/courier', adminOnly, adminController.sendToCourier);
 router.post('/order/sync-courier', adminOnly, adminController.syncCourierStatus);
+router.post('/inventory-alert', staffOnly, adminController.sendInventoryAlert);
 
 module.exports = router;

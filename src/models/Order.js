@@ -106,6 +106,18 @@ const orderSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        // Status History for Timeline
+        statusHistory: [{
+            status: {
+                type: String,
+                enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'returned'],
+            },
+            timestamp: {
+                type: Date,
+                default: Date.now,
+            },
+            note: String,
+        }],
     },
     {
         timestamps: true,
