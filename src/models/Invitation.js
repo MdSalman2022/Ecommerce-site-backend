@@ -53,7 +53,7 @@ const invitationSchema = new mongoose.Schema(
 
 // Indexes
 invitationSchema.index({ email: 1, status: 1 });
-invitationSchema.index({ token: 1 });
+// invitationSchema.index({ token: 1 }); // Removed duplicate
 invitationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 
 // Static method to generate a secure token

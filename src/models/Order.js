@@ -126,7 +126,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 // Indexes for common queries
-orderSchema.index({ orderId: 1 });
+// orderSchema.index({ orderId: 1 }); // Removed duplicate
 orderSchema.index({ email: 1 });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ 'courierInfo.trackingCode': 1 });

@@ -44,7 +44,7 @@ const reviewSchema = new mongoose.Schema(
 );
 
 // Index for product reviews
-reviewSchema.index({ productId: 1 });
+// reviewSchema.index({ productId: 1 }); // Removed duplicate
 
 const Review = mongoose.model('Review', reviewSchema);
 
