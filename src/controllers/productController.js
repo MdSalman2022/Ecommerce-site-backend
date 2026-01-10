@@ -5,25 +5,156 @@ const { ApiResponse, ApiError } = require('../utils/ApiResponse');
 const { clearCache } = require('../middleware/cacheMiddleware');
 
 /**
- * @desc    Get all products
+ * @desc    Get all products with pagination, filtering, sorting, and search
  * @route   GET /api/products
  * @access  Public
+ * @query   page, limit, category, brand, stockStatus, minPrice, maxPrice, sortBy, sortOrder, search
  */
 const getAllProducts = asyncHandler(async (req, res) => {
-    const { category } = req.query;
+    const { 
+        page, 
+        limit, 
+        category, 
+        brand, 
+        stockStatus, 
+        minPrice, 
+        maxPrice, 
+        sortBy, 
+        sortOrder,
+        search 
+    } = req.query;
+
+    // Build query
     let query = {};
 
+    // Category filter
     if (category) {
-        // Try to find category by slug
+        // Try to find category by slug first
         const categoryDoc = await mongoose.model('Category').findOne({ slug: category });
-        if (categoryDoc) {
-            query.category = categoryDoc._id;
-        } else if (mongoose.isValidObjectId(category)) {
-            // If valid ID, assume it's ID
-            query.category = category;
+        const categoryId = categoryDoc ? categoryDoc._id : (mongoose.isValidObjectId(category) ? category : null);
+        
+        if (categoryId) {
+            // Match if it's either in the category or in the subCategory
+            query.$or = [
+                { category: categoryId },
+                { subCategory: categoryId }
+            ];
         }
     }
 
+    // Brand filter
+    if (brand) {
+        query.brand = brand;
+    }
+
+    // Search filter - search across name, brand, tags
+    if (search) {
+        query.$or = [
+            { name: { $regex: search, $options: 'i' } },
+            { brand: { $regex: search, $options: 'i' } },
+            { tags: { $in: [new RegExp(search, 'i')] } }
+        ];
+    }
+
+    // If pagination parameters are provided, return paginated results
+    if (page || limit) {
+        const pageNum = parseInt(page) || 1;
+        const limitNum = parseInt(limit) || 20;
+        const skip = (pageNum - 1) * limitNum;
+
+        // Get all products matching the query for filtering by price/stock
+        let productsQuery = Product.find(query)
+            .populate('category', 'name slug')
+            .populate('subCategory', 'name slug')
+            .lean();
+
+        let products = await productsQuery;
+
+        // Stock status filter (needs to be done after query since it's in variants)
+        if (stockStatus) {
+            products = products.filter(p => {
+                const totalStock = p.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
+                
+                switch (stockStatus) {
+                    case 'in-stock':
+                        return totalStock > 10;
+                    case 'low-stock':
+                        return totalStock > 0 && totalStock <= 10;
+                    case 'out-of-stock':
+                        return totalStock === 0;
+                    default:
+                        return true;
+                }
+            });
+        }
+
+        // Price range filter (needs to be done after query since price is in variants)
+        if (minPrice || maxPrice) {
+            products = products.filter(p => {
+                const variant = p.variants?.[0];
+                if (!variant) return false;
+                
+                const price = variant.salePrice > 0 ? variant.salePrice : variant.regularPrice;
+                
+                if (minPrice && maxPrice) {
+                    return price >= parseFloat(minPrice) && price <= parseFloat(maxPrice);
+                } else if (minPrice) {
+                    return price >= parseFloat(minPrice);
+                } else if (maxPrice) {
+                    return price <= parseFloat(maxPrice);
+                }
+                return true;
+            });
+        }
+
+        // Total before pagination
+        const total = products.length;
+
+        // Sorting
+        if (sortBy) {
+            products.sort((a, b) => {
+                const order = sortOrder === 'asc' ? 1 : -1;
+                
+                switch (sortBy) {
+                    case 'price': {
+                        const priceA = a.variants?.[0]?.salePrice > 0 ? a.variants[0].salePrice : a.variants?.[0]?.regularPrice || 0;
+                        const priceB = b.variants?.[0]?.salePrice > 0 ? b.variants[0].salePrice : b.variants?.[0]?.regularPrice || 0;
+                        return (priceA - priceB) * order;
+                    }
+                    case 'date':
+                        return (new Date(a.createdAt) - new Date(b.createdAt)) * order;
+                    case 'stock': {
+                        const stockA = a.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
+                        const stockB = b.variants?.reduce((sum, v) => sum + (v.stock || 0), 0) || 0;
+                        return (stockA - stockB) * order;
+                    }
+                    case 'name':
+                        return a.name.localeCompare(b.name) * order;
+                    default:
+                        return 0;
+                }
+            });
+        } else {
+            // Default sort by createdAt descending
+            products.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+
+        // Apply pagination
+        const paginatedProducts = products.slice(skip, skip + limitNum);
+
+        // Return paginated response
+        return res.json({
+            data: paginatedProducts,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total: total,
+                pages: Math.ceil(total / limitNum)
+            }
+        });
+    }
+
+    // If no pagination, return all products (backward compatibility)
     const products = await Product.find(query)
         .populate('category', 'name slug')
         .populate('subCategory', 'name slug')
@@ -75,9 +206,11 @@ const getProductBySlug = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getFeaturedProducts = asyncHandler(async (req, res) => {
+    const limitNum = parseInt(req.query.limit) || 8;
     const products = await Product.find({ 'flags.featured': true })
         .populate('category', 'name slug')
-        .limit(8)
+        .limit(limitNum)
+        .sort({ createdAt: -1 })
         .lean();
     res.json(products);
 });
@@ -88,10 +221,11 @@ const getFeaturedProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getLatestProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({ 'flags.latest': true }) // Or just sort by date? Usually 'latest' flag is manual curation or just sort
+    const limitNum = parseInt(req.query.limit) || 8;
+    const products = await Product.find({ 'flags.latest': true })
         .sort({ createdAt: -1 })
         .populate('category', 'name slug')
-        .limit(8)
+        .limit(limitNum)
         .lean();
     res.json(products);
 });
@@ -102,9 +236,11 @@ const getLatestProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getBestsellerProducts = asyncHandler(async (req, res) => {
+    const limitNum = parseInt(req.query.limit) || 8;
     const products = await Product.find({ 'flags.bestseller': true })
         .populate('category', 'name slug')
-        .limit(8)
+        .limit(limitNum)
+        .sort({ createdAt: -1 })
         .lean();
     res.json(products);
 });
@@ -115,8 +251,12 @@ const getBestsellerProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getSpecialProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({ special: true }).limit(4).lean();
-    // Return plain array for frontend compatibility
+    const limitNum = parseInt(req.query.limit) || 8;
+    const products = await Product.find({ 'flags.special': true })
+        .populate('category', 'name slug')
+        .limit(limitNum)
+        .sort({ createdAt: -1 })
+        .lean();
     res.json(products);
 });
 

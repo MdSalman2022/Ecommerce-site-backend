@@ -11,6 +11,7 @@ const AbandonedCart = require('./AbandonedCart');
 const Cart = require('./Cart');
 const StoreSettings = require('./SiteSettings');
 const Category = require('./Category');
+const PageBuilder = require('./PageBuilder');
 
 module.exports = {
     Product,
@@ -22,4 +23,5 @@ module.exports = {
     Cart,
     StoreSettings,
     Category,
+    PageBuilder,
 };

@@ -20,6 +20,7 @@ const notificationRoutes = require('./notificationRoutes');
 const teamRoutes = require('./teamRoutes');
 const settingsRoutes = require('./settingsRoutes');
 const categoryRoutes = require('./categoryRoutes');
+const pageBuilderRoutes = require('./pageBuilderRoutes');
 
 const { productController, userController, orderController, reviewController, paymentController } = require('../controllers');
 
@@ -41,6 +42,7 @@ router.use('/promo', promoRoutes);
 router.use('/team', teamRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/categories', categoryRoutes);
+router.use('/page-builder', pageBuilderRoutes);
 
 // Health check endpoint
 router.get('/health', (req, res) => {

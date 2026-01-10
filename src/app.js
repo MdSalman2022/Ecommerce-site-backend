@@ -8,6 +8,7 @@ const { apiRoutes, legacyRoutes } = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const { userRateLimiter, authRateLimiter, aiRateLimiter } = require('./middleware/rateLimitMiddleware');
 const { optionalAuth } = require('./middleware/authMiddleware');
+const maintenanceMiddleware = require('./middleware/maintenanceMiddleware');
 
 const app = express();
 
@@ -39,7 +40,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRateLimiter);
 app.use('/api/ai', aiRateLimiter);
-app.use('/api', optionalAuth, userRateLimiter);
+app.use('/api', optionalAuth, maintenanceMiddleware, userRateLimiter);
 
 app.use('/api', apiRoutes);
 app.use('/', legacyRoutes);
