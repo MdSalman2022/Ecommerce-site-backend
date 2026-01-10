@@ -1,16 +1,22 @@
 const mongoose = require('mongoose');
 
 /**
- * Product Schema
- * Represents products in the e-commerce store
- * Matches actual productCollection structure
+ * Product Schema - Clean, simplified structure
+ * All products use variants array for pricing/stock, even single-variant products
  */
 const productSchema = new mongoose.Schema(
     {
+        // Core Information
         name: {
             type: String,
             required: [true, 'Product name is required'],
             trim: true,
+        },
+        slug: {
+            type: String,
+            unique: true,
+            trim: true,
+            index: true,
         },
         description: {
             type: String,
@@ -21,19 +27,11 @@ const productSchema = new mongoose.Schema(
             default: [],
             index: true,
         },
-        cat: {
-            type: String,
-            trim: true,
-            index: true,
-        },
+        
+        // Categories (ObjectId references only)
         category: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Category',
-            index: true,
-        },
-        subcat: {
-            type: String,
-            trim: true,
             index: true,
         },
         subCategory: {
@@ -41,6 +39,8 @@ const productSchema = new mongoose.Schema(
             ref: 'Category',
             index: true,
         },
+        
+        // Brand Information
         brand: {
             type: String,
             trim: true,
@@ -50,20 +50,48 @@ const productSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
-        capacity: {
-            type: String,
-            trim: true,
+        
+        // Media
+        images: {
+            type: [String],
+            default: [],
         },
         
-        // Inventory & Variants
-        // Inventory & Variants
-        // hasVariants and variantOptions are deprecated
-        // hasVariants: { ... },
-        // variantOptions: [{ ... }],
+        // Specifications (key-value pairs)
+        specifications: [{
+            key: String,
+            value: String
+        }],
+        
+        // Product Flags
+        flags: {
+            featured: {
+                type: Boolean,
+                default: false,
+                index: true,
+            },
+            latest: {
+                type: Boolean,
+                default: false,
+            },
+            bestseller: {
+                type: Boolean,
+                default: false,
+                index: true,
+            },
+            special: {
+                type: Boolean,
+                default: false,
+                index: true,
+            },
+        },
+        
+        // Variants (ALL products use this - even single-variant products)
         variants: [{
             attributes: {
                 type: Map,
-                of: String      // e.g., { "Color": "Red", "Size": "M" }
+                of: String,
+                default: {} // Empty for single-variant products
             },
             sku: {
                 type: String,
@@ -71,6 +99,7 @@ const productSchema = new mongoose.Schema(
             },
             regularPrice: {
                 type: Number,
+                required: true,
                 min: 0
             },
             salePrice: {
@@ -88,97 +117,24 @@ const productSchema = new mongoose.Schema(
                 default: 0,
                 min: 0
             },
+            sells: {
+                type: Number,
+                default: 0,
+                min: 0
+            },
             images: {
                 type: [String],
                 default: []
             }
         }],
         
-        // Main product inventory (used when hasVariants = false)
-        stock: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        sku: {
-            type: String,
-            trim: true,
-        },
-        
-        // Specifications (key-value pairs)
-        specifications: [{
-            key: String,
-            value: String
-        }],
-
-        // Pricing
-        regularPrice: {
-            type: Number,
-            required: [true, 'Regular price is required'],
-            min: 0
-        },
-        salePrice: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        costPrice: {
-            type: Number,
-            default: 0,
-            min: 0 // For profit calculation
-        },
-        
-        // Legacy fields mapping (for backward compatibility if needed)
-        image: {
-            type: String,
-            trim: true,
-        },
-        images: {
-            type: [String],
-            default: [],
-        },
-
+        // Rating
         rating: {
             type: Number,
             min: 0,
             max: 5,
             default: 0,
         },
-        featured: {
-            type: Boolean,
-            default: false,
-            index: true,
-        },
-        latest: {
-            type: Boolean,
-            default: false,
-        },
-        bestseller: {
-            type: Boolean,
-            default: false,
-            index: true,
-        },
-        sells: {
-            type: Number,
-            default: 0,
-        },
-        special: {
-            type: Boolean,
-            default: false,
-            index: true,
-        },
-        specialprice: {
-            type: Number,
-            default: 0,
-        },
-        discount: {
-            type: Number,
-            default: 0,
-        },
-        date: {
-            type: String,
-        },
-
     },
     {
         timestamps: true,
@@ -187,7 +143,45 @@ const productSchema = new mongoose.Schema(
 );
 
 // Indexes for common queries
-productSchema.index({ cat: 1, subcat: 1 });
+productSchema.index({ 'category': 1, 'subCategory': 1 });
+
+// Slug generation utility
+async function generateUniqueSlug(name, productId) {
+    // Take first 100 chars, convert to lowercase, replace spaces/special chars with hyphens
+    let baseSlug = name
+        .slice(0, 100)
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Check if slug exists (excluding current product if updating)
+    const Product = mongoose.model('Product');
+    while (await Product.findOne({ slug, _id: { $ne: productId } })) {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+    }
+    
+    return slug;
+}
+
+// Pre-save hook: Generate slug if missing or name changed
+productSchema.pre('save', async function(next) {
+    // Generate slug if missing or name changed
+    if (!this.slug || this.isModified('name')) {
+        this.slug = await generateUniqueSlug(this.name, this._id);
+    }
+    
+    // Ensure at least one variant exists
+    if (!this.variants || this.variants.length === 0) {
+        throw new Error('Product must have at least one variant');
+    }
+    
+    next();
+});
 
 const Product = mongoose.model('Product', productSchema);
 

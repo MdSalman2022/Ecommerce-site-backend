@@ -12,22 +12,31 @@ const getWishlist = asyncHandler(async (req, res) => {
 
     const wishlistItems = await Wishlist.find({ email }).populate({
         path: 'productId',
-        select: 'name price image brand cat rating stock',
-    }).sort({ addedAt: -1 });
+        select: 'name slug images brand category subCategory rating variants flags',
+    }).sort({ addedAt: -1 }).lean();
 
     const products = wishlistItems
         .filter(item => item.productId) // Filter out any null products
-        .map(item => ({
-            _id: item.productId._id,
-            name: item.productId.name,
-            price: item.productId.price,
-            image: item.productId.image,
-            brand: item.productId.brand,
-            category: item.productId.cat,
-            rating: item.productId.rating,
-            stock: item.productId.stock,
-            addedAt: item.addedAt,
-        }));
+        .map(item => {
+            const product = item.productId;
+            const mainVariant = product.variants?.[0] || {};
+            
+            return {
+                _id: product._id,
+                name: product.name,
+                slug: product.slug,
+                price: mainVariant.salePrice > 0 ? mainVariant.salePrice : mainVariant.regularPrice,
+                regularPrice: mainVariant.regularPrice,
+                image: (product.images && product.images[0]) || (mainVariant.images && mainVariant.images[0]),
+                brand: product.brand,
+                category: product.category,
+                subCategory: product.subCategory,
+                rating: product.rating,
+                stock: (mainVariant.stock || 0) > 0,
+                flags: product.flags,
+                addedAt: item.addedAt,
+            };
+        });
 
     res.json({
         success: true,

@@ -1,4 +1,4 @@
-const { Order } = require('../models');
+const { Order, Product } = require('../models');
 const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const { ApiResponse, ApiError } = require('../utils/ApiResponse');
@@ -11,7 +11,6 @@ const emailService = require('../services/emailService');
  */
 const getAllOrders = asyncHandler(async (req, res) => {
     const orders = await Order.find().sort({ createdAt: -1 });
-    // Return plain array for frontend compatibility
     res.json(orders);
 });
 
@@ -25,38 +24,29 @@ const searchOrders = asyncHandler(async (req, res) => {
     
     let filter = {};
     
-    // Text search (Order ID, name, phone)
     if (query && query.trim()) {
         const searchTerm = query.trim();
         const cleanQuery = searchTerm.startsWith('#') ? searchTerm.slice(1) : searchTerm;
         
-        // Determine search type
         if (searchTerm.startsWith('#') || searchTerm.toLowerCase().startsWith('ord')) {
-            // Order ID search
             filter.$or = [
                 { orderId: { $regex: cleanQuery, $options: 'i' } },
                 { _id: cleanQuery.length === 24 ? cleanQuery : undefined }
             ].filter(Boolean);
         } else if (/^[\+0-9]/.test(searchTerm)) {
-            // Phone number search
             filter.contact = { $regex: searchTerm, $options: 'i' };
         } else {
-            // Name search
             filter.name = { $regex: searchTerm, $options: 'i' };
         }
     }
     
-    // Status filter
     if (status && status !== 'all') {
         filter.orderStatus = status;
     }
     
-    // Date range filter
     if (dateFrom || dateTo) {
         filter.createdAt = {};
-        if (dateFrom) {
-            filter.createdAt.$gte = new Date(dateFrom);
-        }
+        if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
         if (dateTo) {
             const endDate = new Date(dateTo);
             endDate.setHours(23, 59, 59, 999);
@@ -65,12 +55,7 @@ const searchOrders = asyncHandler(async (req, res) => {
     }
     
     const orders = await Order.find(filter).sort({ createdAt: -1 }).limit(100);
-    
-    res.json({
-        success: true,
-        count: orders.length,
-        orders
-    });
+    res.json({ success: true, count: orders.length, orders });
 });
 
 /**
@@ -90,19 +75,10 @@ const getOrdersByEmail = asyncHandler(async (req, res) => {
  */
 const getOrderById = asyncHandler(async (req, res) => {
     const order = await Order.findById(req.params.id);
-
-    if (!order) {
-        throw new ApiError(404, 'Order not found');
-    }
-
+    if (!order) throw new ApiError(404, 'Order not found');
     res.json(order);
 });
 
-/**
- * @desc    Create new order
- * @route   POST /api/orders
- * @access  Private
- */
 /**
  * Generate Custom Order ID
  * Format: ORDYYYYMMDDXXXX (e.g., ORD202410050001)
@@ -114,7 +90,6 @@ const generateOrderId = async () => {
     const dd = String(date.getDate()).padStart(2, '0');
     const todayPrefix = `ORD${yyyy}${mm}${dd}`;
 
-    // Find the last order created today
     const lastOrder = await Order.findOne({ 
         orderId: { $regex: new RegExp(`^${todayPrefix}`) } 
     }).sort({ createdAt: -1 });
@@ -123,70 +98,121 @@ const generateOrderId = async () => {
     if (lastOrder && lastOrder.orderId) {
         const currentStr = lastOrder.orderId.replace(todayPrefix, '');
         const currentNum = parseInt(currentStr, 10);
-        if (!isNaN(currentNum)) {
-            nextNum = currentNum + 1;
-        }
+        if (!isNaN(currentNum)) nextNum = currentNum + 1;
     }
 
     const suffix = String(nextNum).padStart(4, '0');
     return `${todayPrefix}${suffix}`;
 };
 
+/**
+ * @desc    Create new order (Harden with Server-Side Validation)
+ * @route   POST /api/orders
+ * @access  Public
+ */
 const createOrder = asyncHandler(async (req, res) => {
-    const orderData = req.body;
+    const { items, amount, ...otherOrderData } = req.body;
     
-    // Generate Custom Order ID
-    orderData.orderId = await generateOrderId();
+    if (!items || !Array.isArray(items) || items.length === 0) {
+        throw new ApiError(400, 'Order items are required');
+    }
 
-    // Initialize status history with 'pending'
-    orderData.statusHistory = [{
-        status: 'pending',
-        timestamp: new Date(),
-        note: 'Order placed'
-    }];
+    // 1. Server-Side Price & Stock Validation (Source of Truth)
+    let validatedTotal = 0;
+    const validatedItems = [];
 
-    const order = await Order.create(orderData);
+    for (const item of items) {
+        const product = await Product.findById(item.productId);
+        if (!product) {
+            throw new ApiError(404, `Product not found: ${item.name || item.productId}`);
+        }
+
+        // Find specific variant
+        const variant = product.variants.find(v => v._id.toString() === item.variantId);
+        if (!variant) {
+            throw new ApiError(404, `Variant not found for product ${product.name}`);
+        }
+
+        // Check stock
+        if (variant.stock < item.quantity) {
+            throw new ApiError(400, `Insufficient stock for ${product.name} (${variant.sku || ''})`);
+        }
+
+        const unitPrice = variant.salePrice > 0 ? variant.salePrice : variant.regularPrice;
+        const itemTotal = unitPrice * item.quantity;
+        validatedTotal += itemTotal;
+
+        validatedItems.push({
+            productId: product._id,
+            variantId: variant._id,
+            name: product.name,
+            sku: variant.sku,
+            image: variant.images?.[0] || product.images?.[0],
+            price: unitPrice,
+            quantity: item.quantity,
+            totalPrice: itemTotal,
+            // Keep legacy fields for compatibility if needed
+            brand: product.brand,
+            cat: product.category?.toString()
+        });
+    }
+
+    // 2. Validate Final Amount (Prevention of Price Injection)
+    // Here we could add shipping/discount logic
+    const shipping = otherOrderData.shippingCost || 0; // Should also be validated server-side if dynamic
+    const finalAmount = validatedTotal + shipping;
+
+    // Check if client-provided amount matches (optional, but good for UX sync check)
+    // We strictly use finalAmount for the actual DB record if it varies.
     
-    // Increment 'sells' count for each product
-    if (order.items && order.items.length > 0) {
-        for (const item of order.items) {
-             try {
-                // Determine the product/variant ID. 
-                // Assuming item.productId is the main product or variant ID
-                if (item.productId) {
-                    await mongoose.model('Product').findByIdAndUpdate(
-                        item.productId, 
-                        { 
-                            $inc: { sells: item.quantity, stock: -item.quantity } 
-                        }
-                    );
+    // 3. Generate Custom Order ID
+    const orderId = await generateOrderId();
+
+    // 4. Create Order Record
+    const order = await Order.create({
+        ...otherOrderData,
+        orderId,
+        items: validatedItems,
+        amount: finalAmount, // Use server-calculated amount
+        orderStatus: 'pending',
+        statusHistory: [{
+            status: 'pending',
+            timestamp: new Date(),
+            note: 'Order placed'
+        }]
+    });
+    
+    // 5. Atomic Stock Update (Decrement Variants)
+    for (const item of validatedItems) {
+        try {
+            await Product.updateOne(
+                { _id: item.productId, 'variants._id': item.variantId },
+                { 
+                    $inc: { 
+                        'variants.$.stock': -item.quantity,
+                        'variants.$.sells': item.quantity
+                    } 
                 }
-             } catch (err) {
-                 console.error(`Failed to update stats for product ${item.productId}:`, err);
-             }
+            );
+        } catch (err) {
+            console.error(`Failed to update stock for variant ${item.variantId}:`, err);
         }
     }
     
-    // Send order confirmation email (non-blocking)
+    // 6. Send Order Confirmation (Non-blocking)
     if (order.email) {
         const emailData = {
             email: order.email,
             name: order.name || 'Customer',
-            orderId: order.orderId, // Use the new custom ID
-            items: order.items || [], // Corrected field access
-            total: (order.amount || 0) / 100, // Convert from cents
-            discount: order.discountAmount || 0,
-            promoCode: order.promoCode || null,
-            address: order.address || '',
-            city: order.city || '',
+            orderId: order.orderId,
+            items: order.items,
+            total: order.amount, // Now in BDT
+            currency: 'BDT',
+            address: order.address,
+            city: order.city,
         };
         
         emailService.sendOrderConfirmation(emailData)
-            .then(result => {
-                if (result && result.success) {
-                    console.log(`Order confirmation email sent to ${order.email}`);
-                }
-            })
             .catch(err => console.error('Email error:', err));
     }
     

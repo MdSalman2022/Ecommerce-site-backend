@@ -14,11 +14,22 @@ const getAllProducts = asyncHandler(async (req, res) => {
     let query = {};
 
     if (category) {
-        query.cat = category;
+        // Try to find category by slug
+        const categoryDoc = await mongoose.model('Category').findOne({ slug: category });
+        if (categoryDoc) {
+            query.category = categoryDoc._id;
+        } else if (mongoose.isValidObjectId(category)) {
+            // If valid ID, assume it's ID
+            query.category = category;
+        }
     }
 
-    const products = await Product.find(query).sort({ createdAt: -1 });
-    // Return plain array for frontend compatibility
+    const products = await Product.find(query)
+        .populate('category', 'name slug')
+        .populate('subCategory', 'name slug')
+        .sort({ createdAt: -1 })
+        .lean();
+
     res.json(products);
 });
 
@@ -28,13 +39,33 @@ const getAllProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getProductById = asyncHandler(async (req, res) => {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id)
+        .populate('category', 'name slug')
+        .populate('subCategory', 'name slug')
+        .lean();
 
     if (!product) {
         throw new ApiError(404, 'Product not found');
     }
 
-    // Return plain object for frontend compatibility
+    res.json(product);
+});
+
+/**
+ * @desc    Get product by slug
+ * @route   GET /api/products/slug/:slug
+ * @access  Public
+ */
+const getProductBySlug = asyncHandler(async (req, res) => {
+    const product = await Product.findOne({ slug: req.params.slug })
+        .populate('category', 'name slug')
+        .populate('subCategory', 'name slug')
+        .lean();
+
+    if (!product) {
+        throw new ApiError(404, 'Product not found');
+    }
+
     res.json(product);
 });
 
@@ -44,8 +75,10 @@ const getProductById = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getFeaturedProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({ featured: true }).limit(4);
-    // Return plain array for frontend compatibility
+    const products = await Product.find({ 'flags.featured': true })
+        .populate('category', 'name slug')
+        .limit(8)
+        .lean();
     res.json(products);
 });
 
@@ -55,8 +88,11 @@ const getFeaturedProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getLatestProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 }).limit(4);
-    // Return plain array for frontend compatibility
+    const products = await Product.find({ 'flags.latest': true }) // Or just sort by date? Usually 'latest' flag is manual curation or just sort
+        .sort({ createdAt: -1 })
+        .populate('category', 'name slug')
+        .limit(8)
+        .lean();
     res.json(products);
 });
 
@@ -66,8 +102,10 @@ const getLatestProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getBestsellerProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({ bestseller: true }).limit(4);
-    // Return plain array for frontend compatibility
+    const products = await Product.find({ 'flags.bestseller': true })
+        .populate('category', 'name slug')
+        .limit(8)
+        .lean();
     res.json(products);
 });
 
@@ -77,7 +115,7 @@ const getBestsellerProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getSpecialProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({ special: true }).limit(4);
+    const products = await Product.find({ special: true }).limit(4).lean();
     // Return plain array for frontend compatibility
     res.json(products);
 });
@@ -88,7 +126,7 @@ const getSpecialProducts = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getLatestItems = asyncHandler(async (req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 }).limit(3);
+    const products = await Product.find().sort({ createdAt: -1 }).limit(3).lean();
     // Return plain array for frontend compatibility
     res.json(products);
 });
@@ -99,7 +137,7 @@ const getLatestItems = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const getBackInStore = asyncHandler(async (req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 }).limit(20);
+    const products = await Product.find().sort({ createdAt: -1 }).limit(20).lean();
     // Return plain array for frontend compatibility
     res.json(products);
 });
@@ -110,40 +148,70 @@ const getBackInStore = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const createProduct = asyncHandler(async (req, res) => {
-    const { variantConfigs } = req.body; // Remove hasVariants from destructuring
+    const { variantConfigs, featured, latest, bestseller, special, image, images } = req.body;
     let productData = { ...req.body };
     
-    // Auto-generate SKU if missing
-    if (!productData.sku || productData.sku.trim() === '') {
-        const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-        productData.sku = `SKU-${Date.now().toString().slice(-4)}-${randomSuffix}`;
-    }
+    // Handle flags - group them into flags object
+    productData.flags = {
+        featured: featured || false,
+        latest: latest || false,
+        bestseller: bestseller || false,
+        special: special || false,
+    };
     
-    // Handle products with variants
+    // Remove legacy flag fields from root
+    delete productData.featured;
+    delete productData.latest;
+    delete productData.bestseller;
+    delete productData.special;
+    
+    // Handle images array
+    if (image && (!images || images.length === 0)) {
+        productData.images = [image];
+    } else if (images) {
+        productData.images = images;
+    }
+    delete productData.image;
+    
+    // Handle variants
     if (variantConfigs && variantConfigs.length > 0) {
-        // Map variantConfigs to variants array
-        productData.variants = variantConfigs.map(config => {
-            const variantSku = `${productData.sku}-${config.id}`;
-            
-            return {
-                attributes: config.attributes,
-                sku: variantSku,
-                regularPrice: config.regularPrice,
-                salePrice: config.salePrice,
-                costPrice: config.costPrice,
-                stock: config.stock,
-                images: config.images || []
-            };
-        });
-        
-        // Remove meta-fields that shouldn't be stored
+        // Multi-variant product
+        productData.variants = variantConfigs.map(config => ({
+            attributes: config.attributes || {},
+            sku: config.sku || `SKU-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            regularPrice: config.regularPrice,
+            salePrice: config.salePrice || 0,
+            costPrice: config.costPrice || 0,
+            stock: config.stock || 0,
+            sells: 0,
+            images: config.images || []
+        }));
         delete productData.variantConfigs;
+    } else {
+        // Single-variant product - create one variant from root fields
+        productData.variants = [{
+            attributes: {},
+            sku: productData.sku || `SKU-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            regularPrice: productData.regularPrice || productData.price || 0,
+            salePrice: productData.salePrice || 0,
+            costPrice: productData.costPrice || 0,
+            stock: productData.stock || 0,
+            sells: 0,
+            images: []
+        }];
     }
     
-    // Ensure IDs are used if sent
-    if (req.body.category) productData.category = req.body.category;
-    if (req.body.subCategory) productData.subCategory = req.body.subCategory;
-
+    // Remove legacy root-level fields (they're now in variants)
+    delete productData.regularPrice;
+    delete productData.salePrice;
+    delete productData.costPrice;
+    delete productData.stock;
+    delete productData.sku;
+    delete productData.price;
+    delete productData.specialprice;
+    delete productData.discount;
+    delete productData.sells;
+    
     const product = await Product.create(productData);
 
     // Clear cache
@@ -164,32 +232,57 @@ const updateProduct = asyncHandler(async (req, res) => {
         throw new ApiError(404, 'Product not found');
     }
 
+    const { variantConfigs, featured, latest, bestseller, special, image, images } = req.body;
     const productData = { ...req.body };
     
-    // Handle variant product updates
-    if (productData.variantConfigs && productData.variantConfigs.length > 0) {
-        // Map variantConfigs to variants array
-        productData.variants = productData.variantConfigs.map(config => {
-            const variantSku = `${productData.sku}-${config.id}`;
-            
-            return {
-                attributes: config.attributes,
-                sku: variantSku,
-                regularPrice: config.regularPrice,
-                salePrice: config.salePrice,
-                costPrice: config.costPrice,
-                stock: config.stock,
-                images: config.images || []
-            };
-        });
-        
-        // Remove meta-fields
+    // Handle flags - group them into flags object
+    if (featured !== undefined || latest !== undefined || bestseller !== undefined || special !== undefined) {
+        productData.flags = {
+            featured: featured !== undefined ? featured : product.flags?.featured || false,
+            latest: latest !== undefined ? latest : product.flags?.latest || false,
+            bestseller: bestseller !== undefined ? bestseller : product.flags?.bestseller || false,
+            special: special !== undefined ? special : product.flags?.special || false,
+        };
+    }
+    
+    // Remove legacy flag fields from root
+    delete productData.featured;
+    delete productData.latest;
+    delete productData.bestseller;
+    delete productData.special;
+    
+    // Handle images array
+    if (image && (!productData.images || productData.images.length === 0)) {
+        productData.images = [image];
+    }
+    delete productData.image;
+    
+    // Handle variants
+    if (variantConfigs && variantConfigs.length > 0) {
+        // Multi-variant product update
+        productData.variants = variantConfigs.map(config => ({
+            attributes: config.attributes || {},
+            sku: config.sku || `SKU-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            regularPrice: config.regularPrice,
+            salePrice: config.salePrice || 0,
+            costPrice: config.costPrice || 0,
+            stock: config.stock || 0,
+            sells: config.sells || 0,
+            images: config.images || []
+        }));
         delete productData.variantConfigs;
     }
     
-    // Ensure IDs are used if sent
-    if (req.body.category) productData.category = req.body.category;
-    if (req.body.subCategory) productData.subCategory = req.body.subCategory;
+    // Remove legacy root-level fields (they're now in variants)
+    delete productData.regularPrice;
+    delete productData.salePrice;
+    delete productData.costPrice;
+    delete productData.stock;
+    delete productData.sku;
+    delete productData.price;
+    delete productData.specialprice;
+    delete productData.discount;
+    delete productData.sells;
 
     product = await Product.findByIdAndUpdate(req.params.id, productData, {
         new: true,
@@ -225,6 +318,7 @@ const deleteProducts = asyncHandler(async (req, res) => {
 module.exports = {
     getAllProducts,
     getProductById,
+    getProductBySlug,
     getFeaturedProducts,
     getLatestProducts,
     getBestsellerProducts,

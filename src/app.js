@@ -25,7 +25,7 @@ const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
 app.use(cors({
     origin: corsOrigin === '*' ? true : corsOrigin.split(',').map(o => o.trim()),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id'],
     credentials: true,
 }));
 

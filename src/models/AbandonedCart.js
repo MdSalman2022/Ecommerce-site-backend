@@ -12,17 +12,15 @@ const mongoose = require('mongoose');
  */
 const abandonedCartSchema = new mongoose.Schema(
     {
-        // Session/User identification
-        sessionId: {
-            type: String,
+        // Reference to the actual cart
+        cart: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Cart',
             required: true,
             index: true,
         },
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            sparse: true,
-        },
+        
+        // Contact information (captured at checkout)
         email: {
             type: String,
             trim: true,
@@ -33,49 +31,34 @@ const abandonedCartSchema = new mongoose.Schema(
             trim: true,
         },
         
-        // Cart items (snapshot at abandonment)
-        items: [{
-            productId: String,
-            name: String,
-            image: String,
-            price: Number,
-            quantity: Number,
-            totalPrice: Number,
-        }],
-        
-        // Cart value
-        cartTotal: {
-            type: Number,
-            default: 0,
-        },
-        
         // Funnel stage
         stage: {
             type: String,
-            enum: ['cart_added', 'checkout_started', 'checkout_info_filled', 'converted', 'abandoned'],
-            default: 'cart_added',
+            enum: ['checkout_started', 'checkout_info_filled', 'converted', 'abandoned'],
+            default: 'checkout_started',
         },
         
-        // Checkout info (if they filled any before abandoning)
+        // Checkout info (shipping details)
         checkoutInfo: {
             name: String,
             address: String,
             city: String,
             contact: String,
+            email: String,
         },
         
         // Timing
-        cartCreatedAt: {
+        checkoutStartedAt: {
             type: Date,
             default: Date.now,
         },
-        checkoutStartedAt: Date,
         lastActivityAt: {
             type: Date,
             default: Date.now,
         },
         abandonedAt: Date,
         convertedAt: Date,
+        orderId: String,
         
         // Recovery tracking
         recoveryEmailSent: {
@@ -83,12 +66,6 @@ const abandonedCartSchema = new mongoose.Schema(
             default: false,
         },
         recoveryEmailSentAt: Date,
-        
-        // Device/source info
-        deviceInfo: {
-            userAgent: String,
-            ip: String,
-        },
     },
     {
         timestamps: true,
@@ -100,34 +77,7 @@ const abandonedCartSchema = new mongoose.Schema(
 abandonedCartSchema.index({ stage: 1, lastActivityAt: 1 });
 abandonedCartSchema.index({ email: 1 });
 abandonedCartSchema.index({ phone: 1 });
-abandonedCartSchema.index({ createdAt: 1 });
-
-// Static method to find or create cart session
-abandonedCartSchema.statics.findOrCreateSession = async function(sessionId, userId = null) {
-    let cart = await this.findOne({ sessionId, stage: { $nin: ['converted', 'abandoned'] } });
-    
-    if (!cart) {
-        cart = new this({ sessionId, userId });
-        await cart.save();
-    }
-    
-    return cart;
-};
-
-// Mark cart as checkout started
-abandonedCartSchema.methods.startCheckout = async function() {
-    this.stage = 'checkout_started';
-    this.checkoutStartedAt = new Date();
-    this.lastActivityAt = new Date();
-    return this.save();
-};
-
-// Mark cart as converted (order placed)
-abandonedCartSchema.methods.markConverted = async function() {
-    this.stage = 'converted';
-    this.convertedAt = new Date();
-    return this.save();
-};
+abandonedCartSchema.index({ cart: 1 }, { unique: true }); // One abandoned cart per cart
 
 const AbandonedCart = mongoose.model('AbandonedCart', abandonedCartSchema);
 

@@ -5,6 +5,7 @@ const {
     getOrdersByStatus,
     getTopProducts,
     getTodayStats,
+    getDashboardData,
 } = require('../controllers/analyticsController');
 const { protect } = require('../middleware/authMiddleware');
 const { staffOnly } = require('../middleware/rbacMiddleware');
@@ -18,6 +19,7 @@ const { staffOnly } = require('../middleware/rbacMiddleware');
 router.use(protect);
 router.use(staffOnly);
 
+router.get('/dashboard', getDashboardData);
 router.get('/revenue', getRevenueStats);
 router.get('/orders-by-status', getOrdersByStatus);
 router.get('/top-products', getTopProducts);

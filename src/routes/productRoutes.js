@@ -3,6 +3,7 @@ const router = express.Router();
 const {
     getAllProducts,
     getProductById,
+    getProductBySlug,
     getFeaturedProducts,
     getLatestProducts,
     getBestsellerProducts,
@@ -28,6 +29,7 @@ router.get('/bestseller', getBestsellerProducts);
 router.get('/special', getSpecialProducts);
 router.get('/latest-items', getLatestItems);
 router.get('/back-in-store', getBackInStore);
+router.get('/slug/:slug', getProductBySlug);
 router.get('/:id', getProductById);
 
 // POST routes

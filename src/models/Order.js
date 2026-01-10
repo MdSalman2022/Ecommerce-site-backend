@@ -7,6 +7,11 @@ const mongoose = require('mongoose');
 const orderItemSchema = new mongoose.Schema(
     {
         _id: String,
+        productId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Product'
+        },
+        variantId: String,
         name: String,
         cat: String,
         subcat: String,

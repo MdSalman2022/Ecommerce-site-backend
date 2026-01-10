@@ -153,7 +153,7 @@ const sendToCourier = asyncHandler(async (req, res) => {
         recipient_name: order.name,
         recipient_phone: order.contact,
         recipient_address: `${order.address}, ${order.city}`,
-        cod_amount: order.transactionId === 'Cash on Delivery' ? order.amount / 100 : 0,
+        cod_amount: order.transactionId === 'Cash on Delivery' ? order.amount : 0,
         note: 'Handle with care'
     };
 

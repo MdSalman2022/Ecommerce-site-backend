@@ -35,7 +35,7 @@ const getRevenueStats = asyncHandler(async (req, res) => {
         {
             $project: {
                 date: '$_id',
-                revenue: { $divide: ['$revenue', 100] }, // Convert from cents
+                revenue: '$revenue', // Raw amount in Taka
                 orders: 1,
                 _id: 0
             }
@@ -64,9 +64,9 @@ const getRevenueStats = asyncHandler(async (req, res) => {
         data: {
             daily: revenueData,
             totals: totals[0] ? {
-                totalRevenue: totals[0].totalRevenue / 100,
+                totalRevenue: totals[0].totalRevenue,
                 totalOrders: totals[0].totalOrders,
-                avgOrderValue: totals[0].avgOrderValue / 100
+                avgOrderValue: totals[0].avgOrderValue
             } : {
                 totalRevenue: 0,
                 totalOrders: 0,
@@ -171,10 +171,142 @@ const getTodayStats = asyncHandler(async (req, res) => {
         success: true,
         data: todayStats[0] ? {
             ordersToday: todayStats[0].ordersToday,
-            revenueToday: todayStats[0].revenueToday / 100
+            revenueToday: todayStats[0].revenueToday
         } : {
             ordersToday: 0,
             revenueToday: 0
+        }
+    });
+});
+
+/**
+ * @desc    Get comprehensive dashboard data
+ * @route   GET /api/analytics/dashboard
+ * @access  Private/Staff
+ */
+const getDashboardData = asyncHandler(async (req, res) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    // 1. Today's Stats & Total Products & Low Stock
+    const [todayResult, totalProducts, lowStockProducts, recentOrders] = await Promise.all([
+        Order.aggregate([
+            { $match: { createdAt: { $gte: today } } },
+            {
+                $group: {
+                    _id: null,
+                    ordersToday: { $sum: 1 },
+                    revenueToday: { $sum: '$amount' },
+                    itemsSoldToday: { $sum: { $sum: '$items.quantity' } }
+                }
+            }
+        ]),
+        Product.countDocuments(),
+        Product.countDocuments({ 'variants.stock': { $lt: 10 } }), // Threshold for low stock
+        Order.find()
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('orderId name contact date orderStatus amount items createdAt')
+            .lean()
+    ]);
+
+    // 2. Revenue Over Time (Last 7 Days)
+    const revenueData = await Order.aggregate([
+        {
+            $match: {
+                createdAt: { $gte: sevenDaysAgo },
+                orderStatus: { $nin: ['cancelled', 'returned'] }
+            }
+        },
+        {
+            $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                revenue: { $sum: '$amount' },
+                orders: { $sum: 1 }
+            }
+        },
+        { $sort: { '_id': 1 } },
+        {
+            $project: {
+                date: '$_id',
+                revenue: 1,
+                orders: 1,
+                _id: 0
+            }
+        }
+    ]);
+
+    // 3. Top Categories
+    const topCategories = await Order.aggregate([
+        { $unwind: '$items' },
+        {
+            $group: {
+                _id: '$items.cat',
+                count: { $sum: '$items.quantity' }
+            }
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+        {
+            $addFields: {
+                catId: {
+                    $convert: {
+                        input: "$_id",
+                        to: "objectId",
+                        onError: "$_id",
+                        onNull: "$_id"
+                    }
+                }
+            }
+        },
+        {
+            $lookup: {
+                from: 'categories',
+                localField: 'catId',
+                foreignField: '_id',
+                as: 'categoryInfo'
+            }
+        },
+        { $unwind: { path: '$categoryInfo', preserveNullAndEmptyArrays: true } },
+        {
+            $project: {
+                name: { $ifNull: ['$categoryInfo.name', 'Others'] },
+                value: '$count'
+            }
+        }
+    ]);
+
+    // Calculate percentage for top categories
+    const totalQty = topCategories.reduce((sum, cat) => sum + cat.value, 0);
+    const topCategoriesFormatted = topCategories.map(cat => ({
+        ...cat,
+        percentage: totalQty > 0 ? Math.round((cat.value / totalQty) * 100) : 0
+    })).slice(0, 5);
+
+    res.json({
+        success: true,
+        data: {
+            summary: {
+                todaySales: todayResult[0]?.revenueToday || 0,
+                todayRevenue: todayResult[0]?.revenueToday || 0, 
+                todayOrders: todayResult[0]?.ordersToday || 0,
+                itemsSoldToday: todayResult[0]?.itemsSoldToday || 0,
+                totalProducts,
+                lowStockProducts
+            },
+            revenueChart: revenueData,
+            topCategories: topCategoriesFormatted,
+            recentOrders: recentOrders.map(o => ({
+                id: o.orderId || o._id.toString().slice(-8).toUpperCase(),
+                product: o.items[0]?.name + (o.items.length > 1 ? ` +${o.items.length - 1} more` : ''),
+                customer: o.name,
+                date: o.createdAt,
+                status: o.orderStatus,
+                amount: o.amount
+            }))
         }
     });
 });
@@ -184,4 +316,5 @@ module.exports = {
     getOrdersByStatus,
     getTopProducts,
     getTodayStats,
+    getDashboardData,
 };
