@@ -105,10 +105,7 @@ ${
 4. For questions about shipping/returns/warranty, answer directly
 5. If you can't find something, suggest alternatives`,
 
-  /**
-   * Smart Search Prompt
-   * Parses natural language queries into structured search criteria
-   */
+  // Prompt to parse search queries
   smartSearch: (
     query,
     categories,
@@ -127,10 +124,7 @@ Return JSON only:
   "sortBy": "price_asc|price_desc|rating|null"
 }`,
 
-  /**
-   * Purchase Analysis Prompt
-   * Analyzes customer purchase history for personalized insights
-   */
+  // Prompt for purchase-history insights
   purchaseAnalysis: (
     items
   ) => `Analyze this customer's purchase history for an electronics store:
@@ -143,10 +137,7 @@ Return JSON:
   "message": "Personalized, friendly recommendation message"
 }`,
 
-  /**
-   * Product Description Prompt
-   * Generates SEO-friendly descriptions
-   */
+  // Prompt for product descriptions
   productDescription: (prompt) => `You are an expert e-commerce copywriter.
     
 Write a compelling, SEO-friendly product description based on these details: "${prompt}"
@@ -155,10 +146,7 @@ Instructions:
 - Highlight key features and benefits
 - Do NOT include intro/outro text, just the description`,
 
-  /**
-   * Product Tags Prompt
-   * Generates a comma-separated list of tags
-   */
+  // Prompt for SEO product tags
   productTags: (prompt) => `You are an SEO specialist.
     
 Generate 5-8 relevant, high-traffic product tags for: "${prompt}"
@@ -170,10 +158,7 @@ Instructions:
 - Focus on features, category, and use-case`,
 };
 
-/**
- * FAQ Responses
- * Instant answers for common questions (no AI needed)
- */
+// FAQ responses without AI
 const FAQ_RESPONSES = {
   shipping:
     "📦 Free shipping on orders over $500! Standard delivery takes 3-5 business days.",
@@ -189,23 +174,9 @@ const FAQ_RESPONSES = {
     "📧 Email us at support@bestdeal.com or use the chat for instant help!",
 };
 
-// ============================================================================
-// AI TOOLS (Agent Capabilities)
-// ============================================================================
-
-/**
- * AI Tools - Functions the chat agent can invoke
- * Each tool returns structured data that gets embedded in chat responses
- */
+// AI tools used by the chat agent
 const AI_TOOLS = {
-  /**
-   * Search Products Tool
-   * Finds products based on query with intelligent sorting
-   *
-   * @param {string} query - Search query (supports sorting keywords)
-   * @param {number} limit - Max results to return
-   * @returns {Promise<Array>} - Array of product objects with links
-   */
+  // Search products with smart sorting
   searchProducts: async (query, limit = 5) => {
     const lowerQuery = query.toLowerCase();
     let sort = {rating: -1};
@@ -289,9 +260,7 @@ const AI_TOOLS = {
     });
   },
 
-  /**
-   * Get Deals Tool
-   */
+  // Fetch products currently on sale
   getDeals: async (limit = 5) => {
     const products = await Product.find({
       variants: {$elemMatch: {salePrice: {$gt: 0}}},
@@ -315,9 +284,7 @@ const AI_TOOLS = {
     }));
   },
 
-  /**
-   * Get Featured Products Tool
-   */
+  // Fetch featured products
   getFeaturedProducts: async (limit = 5) => {
     const products = await Product.find({
       "flags.featured": true,
@@ -334,9 +301,7 @@ const AI_TOOLS = {
     }));
   },
 
-  /**
-   * Get Latest Products Tool
-   */
+  // Fetch newest in-stock products
   getLatestProducts: async (limit = 5) => {
     const products = await Product.find({"variants.stock": {$gt: 0}})
       .sort({createdAt: -1})
@@ -352,9 +317,7 @@ const AI_TOOLS = {
     }));
   },
 
-  /**
-   * Get Categories Tool
-   */
+  // List active categories
   getCategories: async () => {
     const categories = await Category.find({isActive: true}).select(
       "name slug"
@@ -365,9 +328,7 @@ const AI_TOOLS = {
     }));
   },
 
-  /**
-   * Get Product Details Tool
-   */
+  // Fetch product details by id
   getProductDetails: async (productId) => {
     const product = await Product.findById(productId).populate(
       "category",
@@ -392,9 +353,7 @@ const AI_TOOLS = {
     };
   },
 
-  /**
-   * Get Brands Tool
-   */
+  // List brands optionally filtered by category
   getBrands: async (categoryName) => {
     let query = {"variants.stock": {$gt: 0}};
     if (categoryName) {
@@ -405,9 +364,7 @@ const AI_TOOLS = {
     return brands.filter(Boolean);
   },
 
-  /**
-   * Track Order Tool
-   */
+  // Track order status
   trackOrder: async (orderId) => {
     if (!orderId) return {error: "Order ID is missing"};
     const order = await Order.findOne({
@@ -427,13 +384,7 @@ const AI_TOOLS = {
   },
 };
 
-// ============================================================================
-// LOGGING & MONITORING
-// ============================================================================
-
-/**
- * Log AI requests for debugging and analytics
- */
+// AI request logging helper
 const logAI = (
   provider,
   model,
@@ -463,14 +414,8 @@ const logAI = (
   console.log("=".repeat(60) + "\n");
 };
 
-// ============================================================================
-// PROVIDER ABSTRACTION LAYER
-// ============================================================================
-
-/**
- * Generate content using Groq API
- * Uses OpenAI-compatible endpoint for easy migration
- */
+// Provider abstraction (Groq/Gemini)
+// Generate text via Groq API
 const generateWithGroq = async (
   prompt,
   modelType = "primary",
@@ -506,9 +451,7 @@ const generateWithGroq = async (
   return content;
 };
 
-/**
- * Generate content using Gemini API
- */
+// Generate text via Gemini API
 const generateWithGemini = async (prompt, task = "general") => {
   const startTime = Date.now();
   const result = await geminiTextModel.generateContent(prompt);
@@ -524,9 +467,7 @@ const generateWithGemini = async (prompt, task = "general") => {
   return content;
 };
 
-/**
- * Generate content with vision capabilities (always uses Gemini)
- */
+// Generate vision response via Gemini
 const generateWithVision = async (
   prompt,
   imageBase64,
@@ -549,10 +490,7 @@ const generateWithVision = async (
   return content;
 };
 
-/**
- * Unified AI content generation
- * Routes to appropriate provider based on configuration
- */
+// Route AI generation to configured provider
 const generateAIContent = async (prompt, task = "general") => {
   const useGroq = process.env.USE_AI === "groq";
   const modelType = task === "search" ? "search" : "primary";
@@ -562,18 +500,8 @@ const generateAIContent = async (prompt, task = "general") => {
     : generateWithGemini(prompt, task);
 };
 
-// ============================================================================
-// PUBLIC API - Exported Service Functions
-// ============================================================================
-
-/**
- * Get AI-Powered Product Recommendations
- * Uses caching to minimize API calls
- *
- * @param {string} productId - Product ID to get recommendations for (optional)
- * @param {number} limit - Number of recommendations
- * @returns {Promise<Object>} - Recommendations with metadata
- */
+// Public service functions
+// Get AI-powered product recommendations (cached)
 const getProductRecommendations = async (productId, limit = 4) => {
   const cacheKey = `recs_${productId || "homepage"}_${limit}`;
   const cached = cache.get(cacheKey);
@@ -626,14 +554,7 @@ const getProductRecommendations = async (productId, limit = 4) => {
   }
 };
 
-/**
- * Smart Search with Natural Language Understanding
- * Tiered approach: keyword search first, AI fallback for complex queries
- *
- * @param {string} query - User's search query
- * @param {number} limit - Max results
- * @returns {Promise<Object>} - Search results with metadata
- */
+// Smart search with tiered AI fallback
 const smartSearch = async (query, limit = 10) => {
   const cacheKey = `search_${query.toLowerCase().trim()}_${limit}`;
   const cached = cache.get(cacheKey);
@@ -797,15 +718,7 @@ const smartSearch = async (query, limit = 10) => {
   }
 };
 
-/**
- * AI Chat Agent with Tool-Calling Capability
- * Supports text chat and image analysis
- *
- * @param {string} userMessage - User's message
- * @param {Array} chatHistory - Previous messages for context
- * @param {Object} context - User context (name, orders, etc.)
- * @returns {Promise<Object>} - Response with optional product cards
- */
+// Chat agent with tool-calling support
 const getAIChatResponse = async (
   userMessage,
   chatHistory = [],
@@ -960,13 +873,7 @@ const getAIChatResponse = async (
   }
 };
 
-/**
- * Analyze Customer Purchase History
- * Uses AI to generate personalized insights
- *
- * @param {string} email - Customer email
- * @returns {Promise<Object>} - Analysis with profile and suggestions
- */
+// Analyze recent purchase history with AI
 const analyzePurchaseHistory = async (email) => {
   try {
     const {Order} = require("../models");
@@ -995,14 +902,7 @@ const analyzePurchaseHistory = async (email) => {
   }
 };
 
-/**
- * Get Recommendations Based on Browsing History
- * Pure database query (no AI needed)
- *
- * @param {string[]} recentProductIds - Products user has viewed
- * @param {number} limit - Max recommendations
- * @returns {Promise<Object>} - Recommended products
- */
+// Recommend products based on browsing history
 const getHistoryRecommendations = async (recentProductIds, limit = 4) => {
   try {
     const seenProducts = await Product.find({
@@ -1027,7 +927,7 @@ const getHistoryRecommendations = async (recentProductIds, limit = 4) => {
   }
 };
 
-// Generate Product Description
+// Generate product description via AI
 
 const generateProductDescription = async (prompt) => {
   try {
@@ -1042,7 +942,7 @@ const generateProductDescription = async (prompt) => {
   }
 };
 
-// Generate Product Tags
+// Generate product tags via AI
 const generateProductTags = async (prompt) => {
   try {
     const text = await generateAIContent(
@@ -1061,9 +961,7 @@ const generateProductTags = async (prompt) => {
   }
 };
 
-// ============================================================================
-// MODULE EXPORTS
-// ============================================================================
+// Module exports
 
 module.exports = {
   // Main service functions
