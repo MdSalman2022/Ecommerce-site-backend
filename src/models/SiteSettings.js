@@ -49,6 +49,7 @@ const storeSettingsSchema = new mongoose.Schema(
             twitter: { type: String, default: '' },
             youtube: { type: String, default: '' },
             linkedin: { type: String, default: '' },
+            tiktok: { type: String, default: '' },
             whatsapp: { type: String, default: '' },
         },
 

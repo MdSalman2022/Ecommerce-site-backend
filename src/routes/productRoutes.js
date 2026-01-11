@@ -10,6 +10,7 @@ const {
     getSpecialProducts,
     getLatestItems,
     getBackInStore,
+    getBrands, // Added getBrands
     createProduct,
     updateProduct,
     deleteProducts,
@@ -23,6 +24,7 @@ const { cacheMiddleware } = require('../middleware/cacheMiddleware');
 
 // GET routes - with caching for main products list
 router.get('/', cacheMiddleware('products'), getAllProducts);
+router.get('/brands', getBrands); // New Route for fetching brands
 router.get('/featured', getFeaturedProducts);
 router.get('/latest', getLatestProducts);
 router.get('/bestseller', getBestsellerProducts);

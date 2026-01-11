@@ -455,6 +455,30 @@ const deleteProducts = asyncHandler(async (req, res) => {
     res.json({ deletedCount: result.deletedCount });
 });
 
+const getBrands = asyncHandler(async (req, res) => {
+    const { category, subCategory } = req.query;
+    let query = {};
+
+    if (category) {
+        const categoryDoc = await mongoose.model('Category').findOne({ slug: category });
+        if (categoryDoc) query.category = categoryDoc._id;
+    }
+
+    if (subCategory) {
+        const subCategoryDoc = await mongoose.model('Category').findOne({ slug: subCategory });
+        if (subCategoryDoc) query.subCategory = subCategoryDoc._id;
+    }
+
+    // Only get brands from active products (in stock or generally listed)
+    // Optional: Add strict availability check if needed: query['variants.stock'] = { $gt: 0 }
+    
+    const brands = await Product.distinct('brand', query);
+    // Filter out potential nulls/empty strings and sort
+    const sortedBrands = brands.filter(b => b).sort();
+
+    res.json(sortedBrands);
+});
+
 module.exports = {
     getAllProducts,
     getProductById,
@@ -465,6 +489,7 @@ module.exports = {
     getSpecialProducts,
     getLatestItems,
     getBackInStore,
+    getBrands,
     createProduct,
     updateProduct,
     deleteProducts,
