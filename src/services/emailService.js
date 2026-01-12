@@ -1,20 +1,6 @@
 const nodemailer = require("nodemailer");
 const QRCode = require("qrcode");
 
-/**
- * Gmail SMTP Configuration
- * Required environment variables:
- * - SMTP_HOST: smtp.gmail.com (or your SMTP server)
- * - SMTP_PORT: 587 (or 465 for SSL)
- * - SMTP_USER: your Gmail address
- * - SMTP_PASS: your Gmail App Password (NOT your regular password)
- * - FROM_EMAIL: Display name and email (e.g., "BestDeal <your@gmail.com>")
- *
- * To generate a Gmail App Password:
- * 1. Go to https://myaccount.google.com/apppasswords
- * 2. Select "Mail" and your device
- * 3. Copy the 16-character password
- */
 
 // Create SMTP transporter
 const transporter = nodemailer.createTransport({
