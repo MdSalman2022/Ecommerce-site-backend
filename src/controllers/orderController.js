@@ -251,6 +251,7 @@ const createOrder = asyncHandler(async (req, res) => {
       email: order.email,
       name: order.name || "Customer",
       orderId: order.orderId,
+      contact: order.contact, // Add contact for tracking URL
       items: order.items,
       total: order.amount, // Now in BDT
       currency: "BDT",

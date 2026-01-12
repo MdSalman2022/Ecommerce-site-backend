@@ -1,5 +1,5 @@
-const nodemailer = require('nodemailer');
-const QRCode = require('qrcode');
+const nodemailer = require("nodemailer");
+const QRCode = require("qrcode");
 
 /**
  * Gmail SMTP Configuration
@@ -9,7 +9,7 @@ const QRCode = require('qrcode');
  * - SMTP_USER: your Gmail address
  * - SMTP_PASS: your Gmail App Password (NOT your regular password)
  * - FROM_EMAIL: Display name and email (e.g., "BestDeal <your@gmail.com>")
- * 
+ *
  * To generate a Gmail App Password:
  * 1. Go to https://myaccount.google.com/apppasswords
  * 2. Select "Mail" and your device
@@ -18,69 +18,85 @@ const QRCode = require('qrcode');
 
 // Create SMTP transporter
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for 587
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-const FROM_EMAIL = process.env.FROM_EMAIL || 'BestDeal <noreply@bestdeal.com>';
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
+const FROM_EMAIL = process.env.FROM_EMAIL || "BestDeal <noreply@bestdeal.com>";
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 
 /**
  * Email Service
  * Handles transactional emails using Nodemailer (Gmail SMTP)
  */
 class EmailService {
-    
-    /**
-     * Send Welcome Email to new users
-     * @param {String} toEmail
-     * @param {String} name
-     */
-    async sendWelcomeEmail(toEmail, name) {
-        try {
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: toEmail,
-                subject: 'Welcome to BestDeal!',
-                html: `
+  /**
+   * Send Welcome Email to new users
+   * @param {String} toEmail
+   * @param {String} name
+   */
+  async sendWelcomeEmail(toEmail, name) {
+    try {
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: toEmail,
+        subject: "Welcome to BestDeal!",
+        html: `
                     <div style="font-family: Arial, sans-serif; color: #333;">
                         <h1>Welcome to BestDeal, ${name}!</h1>
                         <p>We are excited to have you on board. Start exploring our latest products and deals.</p>
                         <a href="${CLIENT_URL}" style="background: #2563EB; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Shop Now</a>
                     </div>
-                `
-            });
-        } catch (error) {
-            console.error('Welcome Email Error:', error);
-        }
+                `,
+      });
+    } catch (error) {
+      console.error("Welcome Email Error:", error);
     }
+  }
 
-    /**
-     * Send Order Confirmation to customer with QR Code
-     * @param {Object} order
-     */
-    async sendOrderConfirmation(order) {
-        if (!order.email) return; // Skip if no email (guest without email)
+  /**
+   * Send Order Confirmation to customer with QR Code
+   * @param {Object} order
+   */
+  async sendOrderConfirmation(order) {
+    if (!order.email) return; // Skip if no email (guest without email)
 
-        try {
-            // Generate QR code for tracking URL
-            const trackingUrl = `${CLIENT_URL}/track`;
-            const qrCodeDataUrl = await QRCode.toDataURL(trackingUrl, { width: 120, margin: 1 });
+    try {
+      // Generate QR code for tracking URL with phone number and order ID
+      const phoneNumber = order.contact || ""; // Fallback to empty string
+      const trackingUrl = `${CLIENT_URL}/track?phone=${encodeURIComponent(
+        phoneNumber
+      )}&orderId=${encodeURIComponent(order.orderId || order._id)}`;
+      const qrCodeBuffer = await QRCode.toBuffer(trackingUrl, {
+        width: 120,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      });
 
-            const itemsHtml = order.items.map(item => `
+      const itemsHtml = order.items
+        .map(
+          (item) => `
                 <tr>
                     <td style="padding: 12px 0; border-bottom: 1px solid #eee;">
                         <div style="display: flex; align-items: center; gap: 12px;">
-                            ${item.image ? `<img src="${item.image}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px;" />` : ''}
+                            ${
+                              item.image
+                                ? `<img src="${item.image}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 8px;" />`
+                                : ""
+                            }
                             <div>
-                                <p style="margin: 0; font-weight: 500;">${item.name}</p>
-                                <p style="margin: 4px 0 0; color: #666; font-size: 14px;">Qty: ${item.quantity}</p>
+                                <p style="margin: 0; font-weight: 500;">${
+                                  item.name
+                                }</p>
+                                <p style="margin: 4px 0 0; color: #666; font-size: 14px;">Qty: ${
+                                  item.quantity
+                                }</p>
                             </div>
                         </div>
                     </td>
@@ -88,16 +104,18 @@ class EmailService {
                         ৳${item.totalPrice || item.price}
                     </td>
                 </tr>
-            `).join('');
+            `
+        )
+        .join("");
 
-            const total = order.total || (order.amount / 100);
-            const orderId = order.orderId || order._id;
-            
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: order.email,
-                subject: `Order Confirmed #${orderId} - BestDeal`,
-                html: `
+      const total = order.total || order.amount / 100;
+      const orderId = order.orderId || order._id;
+
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: order.email,
+        subject: `Order Confirmed #${orderId} - BestDeal`,
+        html: `
                     <!DOCTYPE html>
                     <html>
                     <head>
@@ -125,13 +143,25 @@ class EmailService {
                                         <tr>
                                             <td style="padding: 8px 0;">
                                                 <span style="color: #666;">Date:</span>
-                                                <span style="margin-left: 8px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                                <span style="margin-left: 8px;">${new Date().toLocaleDateString(
+                                                  "en-US",
+                                                  {
+                                                    weekday: "long",
+                                                    year: "numeric",
+                                                    month: "long",
+                                                    day: "numeric",
+                                                  }
+                                                )}</span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <td style="padding: 8px 0;">
                                                 <span style="color: #666;">Delivery Address:</span>
-                                                <span style="margin-left: 8px;">${order.address || 'N/A'}${order.city ? `, ${order.city}` : ''}</span>
+                                                <span style="margin-left: 8px;">${
+                                                  order.address || "N/A"
+                                                }${
+          order.city ? `, ${order.city}` : ""
+        }</span>
                                             </td>
                                         </tr>
                                     </table>
@@ -146,12 +176,22 @@ class EmailService {
                                 <!-- Total -->
                                 <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #2563EB;">
                                     <table style="width: 100%;">
-                                        ${order.discount ? `
+                                        ${
+                                          order.discount
+                                            ? `
                                         <tr>
-                                            <td style="padding: 8px 0; color: #666;">Discount ${order.promoCode ? `(${order.promoCode})` : ''}</td>
-                                            <td style="text-align: right; color: #22c55e;">-৳${order.discount}</td>
+                                            <td style="padding: 8px 0; color: #666;">Discount ${
+                                              order.promoCode
+                                                ? `(${order.promoCode})`
+                                                : ""
+                                            }</td>
+                                            <td style="text-align: right; color: #22c55e;">-৳${
+                                              order.discount
+                                            }</td>
                                         </tr>
-                                        ` : ''}
+                                        `
+                                            : ""
+                                        }
                                         <tr>
                                             <td style="padding: 8px 0; font-size: 18px; font-weight: bold;">Total</td>
                                             <td style="text-align: right; font-size: 24px; font-weight: bold; color: #2563EB;">৳${total.toLocaleString()}</td>
@@ -162,7 +202,7 @@ class EmailService {
                                 <!-- QR Code -->
                                 <div style="margin-top: 30px; text-align: center; background-color: #f8fafc; border-radius: 12px; padding: 20px;">
                                     <p style="margin: 0 0 12px; font-weight: 500;">Track Your Order</p>
-                                    <img src="${qrCodeDataUrl}" alt="QR Code" style="width: 120px; height: 120px;" />
+                                    <img src="cid:qrcode" alt="QR Code" style="width: 120px; height: 120px; display: inline-block;" />
                                     <p style="margin: 12px 0 0; font-size: 14px; color: #666;">Scan to track your order status</p>
                                 </div>
 
@@ -182,110 +222,139 @@ class EmailService {
                         </div>
                     </body>
                     </html>
-                `
-            });
-            return { success: true };
-        } catch (error) {
-            console.error('Order Confirmation Email Error:', error);
-            return { success: false, error };
-        }
+                `,
+        attachments: [
+          {
+            filename: "qrcode.png",
+            content: qrCodeBuffer,
+            cid: "qrcode", // same as the img src cid value
+          },
+        ],
+      });
+      return {success: true};
+    } catch (error) {
+      console.error("Order Confirmation Email Error:", error);
+      return {success: false, error};
     }
+  }
 
+  /**
+   * Send New Order Notification to Admin
+   * @param {Object} order
+   */
+  async sendAdminNotification(order) {
+    if (!ADMIN_EMAIL) return;
 
-    /**
-     * Send New Order Notification to Admin
-     * @param {Object} order
-     */
-    async sendAdminNotification(order) {
-        if (!ADMIN_EMAIL) return;
-
-        try {
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: ADMIN_EMAIL,
-                subject: `New Order Received #${order._id}`,
-                html: `
+    try {
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: ADMIN_EMAIL,
+        subject: `New Order Received #${order._id}`,
+        html: `
                     <div style="font-family: Arial, sans-serif; color: #333;">
                         <h1>New Order Alert</h1>
-                        <p>A new order has been placed by <strong>${order.name || 'Guest'}</strong>.</p>
+                        <p>A new order has been placed by <strong>${
+                          order.name || "Guest"
+                        }</strong>.</p>
                         <p>Order ID: ${order._id}</p>
                         <p>Total Amount: ${order.amount}</p>
-                        <a href="${process.env.CLIENT_URL}/dashboard/orders" style="color: #2563EB;">View in Dashboard</a>
+                        <a href="${
+                          process.env.CLIENT_URL
+                        }/dashboard/orders" style="color: #2563EB;">View in Dashboard</a>
                     </div>
-                `
-            });
-        } catch (error) {
-            console.error('Admin Notification Error:', error);
-        }
+                `,
+      });
+    } catch (error) {
+      console.error("Admin Notification Error:", error);
     }
+  }
 
-    /**
-     * Send Shipping Status Update to customer
-     * @param {Object} data - {email, name, orderId, status}
-     */
-    async sendShippingUpdate(data) {
-        if (!data.email) return;
+  /**
+   * Send Shipping Status Update to customer
+   * @param {Object} data - {email, name, orderId, status}
+   */
+  async sendShippingUpdate(data) {
+    if (!data.email) return;
 
-        try {
-            const statusMessages = {
-                pending: 'Your order is pending confirmation',
-                processing: 'Your order is being processed',
-                shipped: 'Your order has been shipped',
-                delivered: 'Your order has been delivered',
-                cancelled: 'Your order has been cancelled',
-                returned: 'Your order return is being processed'
-            };
+    try {
+      const statusMessages = {
+        pending: "Your order is pending confirmation",
+        processing: "Your order is being processed",
+        shipped: "Your order has been shipped",
+        delivered: "Your order has been delivered",
+        cancelled: "Your order has been cancelled",
+        returned: "Your order return is being processed",
+      };
 
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: data.email,
-                subject: `Order Status Update - ${data.orderId}`,
-                html: `
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: data.email,
+        subject: `Order Status Update - ${data.orderId}`,
+        html: `
                     <div style="font-family: Arial, sans-serif; color: #333;">
                         <h1>Order Status Update</h1>
                         <p>Hello ${data.name},</p>
-                        <p>${statusMessages[data.status] || 'Your order status has been updated'}.</p>
+                        <p>${
+                          statusMessages[data.status] ||
+                          "Your order status has been updated"
+                        }.</p>
                         <p><strong>Order ID:</strong> ${data.orderId}</p>
                         <p><strong>Status:</strong> ${data.status}</p>
-                        <a href="${process.env.CLIENT_URL}/orders/${data.orderId}" style="background: #2563EB; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Track Order</a>
+                        <a href="${process.env.CLIENT_URL}/orders/${
+          data.orderId
+        }" style="background: #2563EB; color: #fff; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Track Order</a>
                     </div>
-                `
-            });
-            return { success: true };
-        } catch (error) {
-            console.error('Shipping Update Email Error:', error);
-            return { success: false, error };
-        }
+                `,
+      });
+      return {success: true};
+    } catch (error) {
+      console.error("Shipping Update Email Error:", error);
+      return {success: false, error};
     }
+  }
 
-    /**
-     * Send Low Stock Alert to Admin
-     * @param {Array} products - Array of low stock products
-     */
-    async sendLowStockAlert(products) {
-        if (!ADMIN_EMAIL || !products || products.length === 0) return;
+  /**
+   * Send Low Stock Alert to Admin
+   * @param {Array} products - Array of low stock products
+   */
+  async sendLowStockAlert(products) {
+    if (!ADMIN_EMAIL || !products || products.length === 0) return;
 
-        try {
-            const productsHtml = products.map(p => `
+    try {
+      const productsHtml = products
+        .map(
+          (p) => `
                 <tr>
                     <td style="padding: 10px; border-bottom: 1px solid #eee;">
-                        ${p.image ? `<img src="${p.image}" alt="${p.name}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" />` : ''}
+                        ${
+                          p.image
+                            ? `<img src="${p.image}" alt="${p.name}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" />`
+                            : ""
+                        }
                     </td>
                     <td style="padding: 10px; border-bottom: 1px solid #eee;">
                         <strong>${p.name}</strong>
-                        ${p.sku ? `<br/><span style="color: #666; font-size: 12px;">SKU: ${p.sku}</span>` : ''}
+                        ${
+                          p.sku
+                            ? `<br/><span style="color: #666; font-size: 12px;">SKU: ${p.sku}</span>`
+                            : ""
+                        }
                     </td>
-                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; color: ${p.stock === 0 ? '#ef4444' : '#f97316'}; font-weight: bold;">
-                        ${p.stock === 0 ? 'Out of Stock' : `${p.stock} left`}
+                    <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center; color: ${
+                      p.stock === 0 ? "#ef4444" : "#f97316"
+                    }; font-weight: bold;">
+                        ${p.stock === 0 ? "Out of Stock" : `${p.stock} left`}
                     </td>
                 </tr>
-            `).join('');
+            `
+        )
+        .join("");
 
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: ADMIN_EMAIL,
-                subject: `⚠️ Low Stock Alert - ${products.length} Products Need Restocking`,
-                html: `
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: ADMIN_EMAIL,
+        subject: `⚠️ Low Stock Alert - ${products.length} Products Need Restocking`,
+        html: `
                     <!DOCTYPE html>
                     <html>
                     <body style="margin: 0; padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5;">
@@ -322,31 +391,31 @@ class EmailService {
                         </div>
                     </body>
                     </html>
-                `
-            });
-            return { success: true };
-        } catch (error) {
-            console.error('Low Stock Alert Email Error:', error);
-            return { success: false, error };
-        }
+                `,
+      });
+      return {success: true};
+    } catch (error) {
+      console.error("Low Stock Alert Email Error:", error);
+      return {success: false, error};
     }
+  }
 
-    /**
-     * Send Team Invitation Email
-     * @param {String} toEmail - Recipient email
-     * @param {String} role - 'admin' or 'moderator'
-     * @param {String} inviteLink - Full URL to accept invitation
-     * @param {String} inviterName - Name of the person sending the invite
-     */
-    async sendTeamInvitation(toEmail, role, inviteLink, inviterName) {
-        try {
-            const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
-            
-            await transporter.sendMail({
-                from: FROM_EMAIL,
-                to: toEmail,
-                subject: `You're invited to join BestDeal as ${roleDisplay}`,
-                html: `
+  /**
+   * Send Team Invitation Email
+   * @param {String} toEmail - Recipient email
+   * @param {String} role - 'admin' or 'moderator'
+   * @param {String} inviteLink - Full URL to accept invitation
+   * @param {String} inviterName - Name of the person sending the invite
+   */
+  async sendTeamInvitation(toEmail, role, inviteLink, inviterName) {
+    try {
+      const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
+
+      await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: toEmail,
+        subject: `You're invited to join BestDeal as ${roleDisplay}`,
+        html: `
                     <!DOCTYPE html>
                     <html>
                     <head>
@@ -382,9 +451,11 @@ class EmailService {
                                         ${roleDisplay.toUpperCase()}
                                     </div>
                                     <p style="color: #64748b; font-size: 14px; margin: 12px 0 0 0;">
-                                        ${role === 'admin' 
-                                            ? 'Full access to manage products, orders, team, and settings' 
-                                            : 'Access to manage products, orders, and moderate content'}
+                                        ${
+                                          role === "admin"
+                                            ? "Full access to manage products, orders, team, and settings"
+                                            : "Access to manage products, orders, and moderate content"
+                                        }
                                     </p>
                                 </div>
                                 
@@ -410,16 +481,16 @@ class EmailService {
                         </div>
                     </body>
                     </html>
-                `
-            });
-            
-            console.log(`Team invitation sent to ${toEmail} for role ${role}`);
-            return { success: true };
-        } catch (error) {
-            console.error('Team Invitation Email Error:', error);
-            return { success: false, error };
-        }
+                `,
+      });
+
+      console.log(`Team invitation sent to ${toEmail} for role ${role}`);
+      return {success: true};
+    } catch (error) {
+      console.error("Team Invitation Email Error:", error);
+      return {success: false, error};
     }
+  }
 }
 
 module.exports = new EmailService();
