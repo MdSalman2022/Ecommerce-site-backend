@@ -1,7 +1,7 @@
-const { User } = require('../models');
-const asyncHandler = require('../utils/asyncHandler');
-const { ApiResponse, ApiError } = require('../utils/ApiResponse');
-const { sendWelcomeEmail } = require('../services/emailService');
+const {User} = require("../models");
+const asyncHandler = require("../utils/asyncHandler");
+const {ApiResponse, ApiError} = require("../utils/ApiResponse");
+const {sendWelcomeEmail} = require("../services/emailService");
 
 /**
  * @desc    Get all users
@@ -9,9 +9,9 @@ const { sendWelcomeEmail } = require('../services/emailService');
  * @access  Private/Admin
  */
 const getAllUsers = asyncHandler(async (req, res) => {
-    const users = await User.find().sort({ createdAt: -1 });
-    // Return plain array for frontend compatibility
-    res.json(users);
+  const users = await User.find().sort({createdAt: -1});
+  // Return plain array for frontend compatibility
+  res.json(users);
 });
 
 /**
@@ -20,13 +20,13 @@ const getAllUsers = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getUserByEmail = asyncHandler(async (req, res) => {
-    const user = await User.findOne({ email: req.params.email });
+  const user = await User.findOne({email: req.params.email});
 
-    if (!user) {
-        throw new ApiError(404, 'User not found');
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    res.json(user);
+  res.json(user);
 });
 
 /**
@@ -35,21 +35,23 @@ const getUserByEmail = asyncHandler(async (req, res) => {
  * @access  Public
  */
 const createUser = asyncHandler(async (req, res) => {
-    const { email } = req.body;
+  const {email} = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-        return res.json(existingUser);
-    }
+  // Check if user already exists
+  const existingUser = await User.findOne({email});
+  if (existingUser) {
+    return res.json(existingUser);
+  }
 
-    const user = await User.create(req.body);
+  const user = await User.create(req.body);
 
-    // Send welcome email (asynchronous, don't block response)
-    sendWelcomeEmail({ email: user.email, name: user.orderName || user.name || 'Valued Customer' })
-        .catch(err => console.error('Failed to send welcome email:', err));
+  // Send welcome email (asynchronous, don't block response)
+  sendWelcomeEmail({
+    email: user.email,
+    name: user.orderName || user.name || "Valued Customer",
+  }).catch((err) => console.error("Failed to send welcome email:", err));
 
-    res.status(201).json(user);
+  res.status(201).json(user);
 });
 
 /**
@@ -58,19 +60,19 @@ const createUser = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const updateCardInfo = asyncHandler(async (req, res) => {
-    const { email, cardnumber } = req.body;
+  const {email, cardnumber} = req.body;
 
-    if (!email) {
-        throw new ApiError(400, 'Email is required');
-    }
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
 
-    const user = await User.findOneAndUpdate(
-        { email },
-        { cardnumber },
-        { new: true, upsert: true, runValidators: true }
-    );
+  const user = await User.findOneAndUpdate(
+    {email},
+    {cardnumber},
+    {new: true, upsert: true, runValidators: true}
+  );
 
-    res.json(user);
+  res.json(user);
 });
 
 /**
@@ -79,25 +81,81 @@ const updateCardInfo = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const updateDeliveryInfo = asyncHandler(async (req, res) => {
-    const { email, address, orderName, contact, city } = req.body;
+  const {email, address, orderName, contact, city} = req.body;
 
-    if (!email) {
-        throw new ApiError(400, 'Email is required');
-    }
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
 
-    const user = await User.findOneAndUpdate(
-        { email },
-        { address, orderName, contact, city },
-        { new: true, upsert: true, runValidators: true }
-    );
+  const user = await User.findOneAndUpdate(
+    {email},
+    {address, orderName, contact, city},
+    {new: true, upsert: true, runValidators: true}
+  );
 
-    res.json(user);
+  res.json(user);
+});
+
+/**
+ * @desc    Get user shipping details
+ * @route   GET /api/users/shipping/:email
+ * @access  Public
+ */
+const getShippingDetails = asyncHandler(async (req, res) => {
+  const user = await User.findOne({email: req.params.email});
+
+  if (!user) {
+    return res.json({success: true, data: null});
+  }
+
+  res.json({
+    success: true,
+    data: {
+      name: user.orderName || user.name,
+      address: user.address,
+      contact: user.contact,
+      city: user.city,
+      email: user.email,
+    },
+  });
+});
+
+/**
+ * @desc    Save/Update shipping details
+ * @route   POST /api/users/shipping
+ * @access  Public
+ */
+const saveShippingDetails = asyncHandler(async (req, res) => {
+  const {email, name, address, contact, city} = req.body;
+
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const user = await User.findOneAndUpdate(
+    {email},
+    {
+      orderName: name,
+      address,
+      contact,
+      city,
+    },
+    {new: true, upsert: true, runValidators: true}
+  );
+
+  res.json({
+    success: true,
+    message: "Shipping details saved successfully",
+    data: user,
+  });
 });
 
 module.exports = {
-    getAllUsers,
-    getUserByEmail,
-    createUser,
-    updateCardInfo,
-    updateDeliveryInfo,
+  getAllUsers,
+  getUserByEmail,
+  createUser,
+  updateCardInfo,
+  updateDeliveryInfo,
+  getShippingDetails,
+  saveShippingDetails,
 };
