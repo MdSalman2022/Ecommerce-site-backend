@@ -800,7 +800,7 @@ const getAIChatResponse = async (
             role: "model",
             parts: [
               {
-                text: "I'm DealBot, ready to help you find the best electronics! 🛒",
+                text: "I'm DealBot, ready to help you find the best electronics!",
               },
             ],
           },

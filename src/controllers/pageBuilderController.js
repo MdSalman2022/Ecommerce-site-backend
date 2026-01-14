@@ -268,7 +268,7 @@ function getDefaultPageConfig(pageName) {
                     isVisible: true,
                     order: 4,
                     config: {
-                        title: 'Best deal Alert! 🛒',
+                        title: 'Best deal Alert!',
                         sourceType: 'bestseller',
                         limit: 10,
                         viewAllLink: '/products?filter=bestseller'
@@ -280,7 +280,7 @@ function getDefaultPageConfig(pageName) {
                     isVisible: true,
                     order: 5,
                     config: {
-                        title: 'Best Selling ⌨️',
+                        title: 'Best Selling',
                         sourceType: 'featured',
                         limit: 10,
                         viewAllLink: '/products?filter=featured'
