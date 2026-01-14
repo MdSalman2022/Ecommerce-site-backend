@@ -1,4 +1,4 @@
-const {Order, Product} = require("../models");
+const {Order, Product, PromoCode} = require("../models");
 const StoreSettings = require("../models/SiteSettings");
 const mongoose = require("mongoose");
 const asyncHandler = require("../utils/asyncHandler");
@@ -129,7 +129,7 @@ const generateOrderId = async () => {
  * @access  Public
  */
 const createOrder = asyncHandler(async (req, res) => {
-  const {items, amount, ...otherOrderData} = req.body;
+  const {items, amount, promoCode, discountAmount, ...otherOrderData} = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new ApiError(400, "Order items are required");
@@ -195,7 +195,8 @@ const createOrder = asyncHandler(async (req, res) => {
       totalPrice: itemTotal,
       // Keep legacy fields for compatibility if needed
       brand: product.brand,
-      cat: product.category?.toString(),
+      cat: product.category?.toString() || product.category,
+      subCat: product.subCategory?.toString() || product.subCategory,
     });
   }
 
@@ -212,7 +213,144 @@ const createOrder = asyncHandler(async (req, res) => {
   }
   
   const deliveryCharge = rates[shippingZone];
-  const finalAmount = validatedTotal + deliveryCharge;
+  
+  // 2.5. Handle Promo Code Validation & Application
+  let serverDiscountAmount = 0;
+  let validatedPromoCode = null;
+  let promo = null;
+  
+  if (promoCode) {
+    const now = new Date();
+    
+    // Atomic increment with validation - prevents race conditions
+    // This operation checks availability and increments in a single atomic DB operation
+    promo = await PromoCode.findOneAndUpdate(
+      {
+        code: promoCode.toUpperCase(),
+        isActive: true,
+        validFrom: { $lte: now },
+        validUntil: { $gte: now },
+        // Atomically check if usage limit allows one more use
+        $expr: {
+          $or: [
+            { $eq: ['$usageLimit', null] }, // No limit
+            { $lt: ['$usedCount', '$usageLimit'] } // Under limit
+          ]
+        }
+      },
+      {
+        $inc: { usedCount: 1 } // Atomic increment
+      },
+      {
+        new: true, // Return updated document
+        runValidators: true
+      }
+    );
+    
+    if (!promo) {
+      // Check why it failed - provide helpful error message
+      const existingPromo = await PromoCode.findOne({ code: promoCode.toUpperCase() });
+      
+      if (!existingPromo) {
+        throw new ApiError(400, 'Invalid promo code');
+      }
+      if (!existingPromo.isActive) {
+        throw new ApiError(400, 'This promo code is no longer active');
+      }
+      if (now < existingPromo.validFrom) {
+        throw new ApiError(400, 'This promo code is not yet valid');
+      }
+      if (now > existingPromo.validUntil) {
+        throw new ApiError(400, 'This promo code has expired');
+      }
+      if (existingPromo.usageLimit !== null && existingPromo.usedCount >= existingPromo.usageLimit) {
+        throw new ApiError(400, 'This promo code has reached its usage limit');
+      }
+      
+      // Fallback error
+      throw new ApiError(400, 'Promo code is not available');
+    }
+    
+    
+    // NEW: Validate minimum item quantity
+    if (promo.minItemQuantity && validatedItems.length < promo.minItemQuantity) {
+      await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+      throw new ApiError(400, `Add ${promo.minItemQuantity - validatedItems.length} more item(s) to use this code`);
+    }
+    
+    // NEW: Check per-user usage limit
+    if (promo.perUserLimit) {
+      const PromoCodeUsage = require('../models/PromoCodeUsage');
+      const userIdentifier = req.user?._id || otherOrderData.email;
+      
+      if (userIdentifier) {
+        const userUsageCount = await PromoCodeUsage.countDocuments({
+          promoCodeId: promo._id,
+          $or: [
+            { userId: req.user?._id },
+            { email: otherOrderData.email }
+          ]
+        });
+        
+        if (userUsageCount >= promo.perUserLimit) {
+          await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+          throw new ApiError(400, 'You have already used this promo code the maximum number of times');
+        }
+      }
+    }
+    
+    // NEW: Category/Product-specific discount calculation
+    let eligibleTotal = validatedTotal;
+    
+    if (promo.applicableCategories && promo.applicableCategories.length > 0) {
+      // Calculate total of only eligible category items (check both cat and subCat)
+      eligibleTotal = validatedItems
+        .filter(item => 
+          (item.cat && promo.applicableCategories.includes(item.cat.toString())) || 
+          (item.subCat && promo.applicableCategories.includes(item.subCat.toString()))
+        )
+        .reduce((sum, item) => sum + item.totalPrice, 0);
+      
+      if (eligibleTotal === 0) {
+        await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+        throw new ApiError(400, 'No eligible items in cart for this promo code');
+      }
+    }
+    
+    if (promo.applicableProducts && promo.applicableProducts.length > 0) {
+      // Calculate total of only eligible product items
+      eligibleTotal = validatedItems
+        .filter(item => promo.applicableProducts.some(p => p.toString() === item.productId.toString()))
+        .reduce((sum, item) => sum + item.totalPrice, 0);
+      
+      if (eligibleTotal === 0) {
+        await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+        throw new ApiError(400, 'No eligible products in cart for this promo code');
+      }
+    }
+    
+    // Validate minimum order amount (on eligible items)
+    if (promo.minOrderAmount && eligibleTotal < promo.minOrderAmount) {
+      // Rollback the increment since validation failed
+      await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+      throw new ApiError(400, `Minimum order amount is ৳${promo.minOrderAmount}`);
+    }
+    
+    
+    // Calculate server-side discount (on eligible items only)
+    serverDiscountAmount = promo.calculateDiscount(eligibleTotal);
+    
+    // Verify client-provided discount matches (prevent manipulation)
+    if (discountAmount && Math.abs(discountAmount - serverDiscountAmount) > 0.01) {
+      // Rollback the increment since validation failed
+      await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+      throw new ApiError(400, 'Discount amount mismatch. Please refresh and try again.');
+    }
+    
+    validatedPromoCode = promoCode.toUpperCase();
+  }
+  
+  const finalAmount = validatedTotal + deliveryCharge - serverDiscountAmount;
 
   // Check if client-provided amount matches (optional, but good for UX sync check)
   // We strictly use finalAmount for the actual DB record if it varies.
@@ -220,24 +358,53 @@ const createOrder = asyncHandler(async (req, res) => {
   // 3. Generate Custom Order ID
   const orderId = await generateOrderId();
 
-  // 4. Create Order Record
-  const order = await Order.create({
-    ...otherOrderData,
-    orderId,
-    items: validatedItems,
-    itemsTotal: validatedTotal,
-    deliveryCharge,
-    shippingZone,
-    amount: finalAmount, // Use server-calculated amount
-    orderStatus: "pending",
-    statusHistory: [
-      {
-        status: "pending",
-        timestamp: new Date(),
-        note: "Order placed",
-      },
-    ],
-  });
+  // 4. Create Order Record (with Rollback Safety)
+  let order;
+  try {
+    order = await Order.create({
+      ...otherOrderData,
+      orderId,
+      items: validatedItems,
+      itemsTotal: validatedTotal,
+      deliveryCharge,
+      shippingZone,
+      promoCode: validatedPromoCode,
+      discountAmount: serverDiscountAmount,
+      amount: finalAmount, // Use server-calculated amount with discount applied
+      orderStatus: "pending",
+      statusHistory: [
+        {
+          status: "pending",
+          timestamp: new Date(),
+          note: "Order placed",
+        },
+      ],
+    });
+
+    // 4.5. Record Promo Code Usage (if applied)
+    if (validatedPromoCode && promo) {
+      const PromoCodeUsage = require('../models/PromoCodeUsage');
+      await PromoCodeUsage.create({
+        promoCodeId: promo._id,
+        orderId: order._id,
+        code: validatedPromoCode,
+        discountAmount: serverDiscountAmount,
+        orderTotal: validatedTotal,
+        userId: req.user?._id || null,
+        email: otherOrderData.email || null,
+        sessionId: req.headers['x-session-id'] || null,
+        ipAddress: req.ip || req.connection.remoteAddress,
+      });
+    }
+  } catch (error) {
+    // CRITICAL: Rollback promo usage if order creation fails
+    if (validatedPromoCode && promo) {
+      await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: -1 } });
+      console.error('Order creation failed, rolled back promo usage:', validatedPromoCode);
+    }
+    throw error;
+  }
+
 
   // 5. Atomic Stock Update (Decrement Variants)
   for (const item of validatedItems) {

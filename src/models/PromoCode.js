@@ -63,6 +63,21 @@ const promoCodeSchema = new mongoose.Schema(
             type: [String],
             default: [], // Empty means all categories
         },
+        applicableProducts: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: 'Product',
+            default: [], // Empty means all products
+        },
+        minItemQuantity: {
+            type: Number,
+            default: null, // null means no minimum item requirement
+            min: 0,
+        },
+        perUserLimit: {
+            type: Number,
+            default: null, // null means no per-user limit
+            min: 1,
+        },
         createdBy: {
             type: String,
         },
@@ -117,7 +132,7 @@ promoCodeSchema.methods.validateForOrder = function(orderTotal, category = null)
     };
 };
 
-// Method to calculate discount amount
+// Method to calculate discount amount (legacy - for simple totals)
 promoCodeSchema.methods.calculateDiscount = function(orderTotal) {
     let discount = 0;
 
@@ -138,6 +153,59 @@ promoCodeSchema.methods.calculateDiscount = function(orderTotal) {
     }
 
     return Math.round(discount * 100) / 100; // Round to 2 decimal places
+};
+
+// Method to calculate discount for a cart with targeted items
+promoCodeSchema.methods.calculateDiscountForCart = function(cartItems) {
+    // cartItems format: [{ productId, categoryId, price, quantity }]
+    let eligibleItems = cartItems;
+    
+    // Filter by product targeting
+    if (this.applicableProducts && this.applicableProducts.length > 0) {
+        eligibleItems = eligibleItems.filter(item => 
+            this.applicableProducts.some(p => p.toString() === item.productId?.toString())
+        );
+    }
+    // Filter by category targeting (only if no product targeting)
+    else if (this.applicableCategories && this.applicableCategories.length > 0) {
+        eligibleItems = eligibleItems.filter(item => {
+            const itemCatIds = Array.isArray(item.categoryIds) 
+                ? item.categoryIds.map(id => id?.toString()) 
+                : [item.categoryId?.toString()].filter(Boolean);
+                
+            return itemCatIds.some(catId => this.applicableCategories.includes(catId));
+        });
+    }
+    // Otherwise, all items are eligible (All Products mode)
+    
+    // Calculate targeted subtotal
+    const targetedSubtotal = eligibleItems.reduce((sum, item) => {
+        return sum + (item.price * item.quantity);
+    }, 0);
+    
+    // Calculate discount on targeted subtotal
+    let discount = 0;
+    if (this.discountType === 'percentage') {
+        discount = (targetedSubtotal * this.discountValue) / 100;
+    } else {
+        discount = this.discountValue;
+    }
+    
+    // Apply max discount cap if set
+    if (this.maxDiscount !== null && discount > this.maxDiscount) {
+        discount = this.maxDiscount;
+    }
+    
+    // Ensure discount doesn't exceed targeted subtotal
+    if (discount > targetedSubtotal) {
+        discount = targetedSubtotal;
+    }
+    
+    return {
+        discount: Math.round(discount * 100) / 100,
+        targetedSubtotal: Math.round(targetedSubtotal * 100) / 100,
+        eligibleItemCount: eligibleItems.length
+    };
 };
 
 const PromoCode = mongoose.model('PromoCode', promoCodeSchema);

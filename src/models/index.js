@@ -12,6 +12,7 @@ const Cart = require('./Cart');
 const StoreSettings = require('./SiteSettings');
 const Category = require('./Category');
 const PageBuilder = require('./PageBuilder');
+const PromoCode = require('./PromoCode');
 
 module.exports = {
     Product,
@@ -24,4 +25,5 @@ module.exports = {
     StoreSettings,
     Category,
     PageBuilder,
+    PromoCode
 };
