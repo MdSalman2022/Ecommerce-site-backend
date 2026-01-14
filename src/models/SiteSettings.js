@@ -73,6 +73,12 @@ const storeSettingsSchema = new mongoose.Schema(
             reviewModeration: { type: Boolean, default: false },
         },
 
+        // ==================== SHIPPING SETTINGS ====================
+        shipping: {
+            dhaka_in: { type: Number, default: 60 },
+            dhaka_out: { type: Number, default: 120 },
+        },
+
         // ==================== SEO SETTINGS ====================
         seo: {
             metaTitle: { type: String, default: 'BestDeal - E-commerce' },

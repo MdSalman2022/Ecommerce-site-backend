@@ -116,9 +116,7 @@ const userSchema = new mongoose.Schema(
         collection: 'userCollection',
     }
 );
-
-// Indexes
-// userSchema.index({ email: 1 }); // Removed duplicate index
+ 
 userSchema.index({ authProvider: 1, providerId: 1 });
 
 // Pre-save middleware - Hash password

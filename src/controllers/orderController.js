@@ -1,4 +1,5 @@
 const {Order, Product} = require("../models");
+const StoreSettings = require("../models/SiteSettings");
 const mongoose = require("mongoose");
 const asyncHandler = require("../utils/asyncHandler");
 const {ApiResponse, ApiError} = require("../utils/ApiResponse");
@@ -199,9 +200,19 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   // 2. Validate Final Amount (Prevention of Price Injection)
-  // Here we could add shipping/discount logic
-  const shipping = otherOrderData.shippingCost || 0; // Should also be validated server-side if dynamic
-  const finalAmount = validatedTotal + shipping;
+  // Fetch dynamic shipping rates
+  const settings = await StoreSettings.getSettings();
+  const rates = settings.shipping || { dhaka_in: 60, dhaka_out: 120 };
+  
+  const shippingZone = otherOrderData.shippingZone || 'dhaka_in';
+  
+  // Validate shipping zone
+  if (!['dhaka_in', 'dhaka_out'].includes(shippingZone)) {
+    throw new ApiError(400, 'Invalid shipping zone');
+  }
+  
+  const deliveryCharge = rates[shippingZone];
+  const finalAmount = validatedTotal + deliveryCharge;
 
   // Check if client-provided amount matches (optional, but good for UX sync check)
   // We strictly use finalAmount for the actual DB record if it varies.
@@ -214,6 +225,9 @@ const createOrder = asyncHandler(async (req, res) => {
     ...otherOrderData,
     orderId,
     items: validatedItems,
+    itemsTotal: validatedTotal,
+    deliveryCharge,
+    shippingZone,
     amount: finalAmount, // Use server-calculated amount
     orderStatus: "pending",
     statusHistory: [

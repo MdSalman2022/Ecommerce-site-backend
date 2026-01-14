@@ -115,7 +115,7 @@ const updateSettings = async (req, res) => {
             };
         } else {
             // Update entire settings (merge at top level)
-            const allowedSections = ['layout', 'store', 'social', 'ecommerce', 'seo', 'maintenance', 'notifications'];
+            const allowedSections = ['layout', 'store', 'social', 'ecommerce', 'seo', 'maintenance', 'notifications', 'shipping'];
             
             for (const key of allowedSections) {
                 if (req.body[key]) {

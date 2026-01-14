@@ -311,10 +311,47 @@ const getDashboardData = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @desc    Get comprehensive statistics data (for Statistics page)
+ * @route   GET /api/analytics/statistics
+ * @access  Private/Staff
+ */
+const getStatisticsData = asyncHandler(async (req, res) => {
+    // Fetch all orders, products, and aggregated user data
+    const [orders, products, topCustomers] = await Promise.all([
+        Order.find().select('shippingZone transactionId orderStatus amount items email contact name').lean(),
+        Product.find().select('variants').lean(),
+        Order.aggregate([
+            { $match: { email: { $exists: true, $ne: '' } } },
+            {
+                $group: {
+                    _id: '$email',
+                    name: { $first: '$name' },
+                    email: { $first: '$email' },
+                    totalSpend: { $sum: '$amount' },
+                    orderCount: { $sum: 1 }
+                }
+            },
+            { $sort: { totalSpend: -1 } },
+            { $limit: 10 }
+        ])
+    ]);
+
+    res.json({
+        success: true,
+        data: {
+            orders,
+            products,
+            topCustomers
+        }
+    });
+});
+
 module.exports = {
     getRevenueStats,
     getOrdersByStatus,
     getTopProducts,
     getTodayStats,
     getDashboardData,
+    getStatisticsData,
 };

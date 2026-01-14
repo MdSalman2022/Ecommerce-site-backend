@@ -1,9 +1,4 @@
 const mongoose = require('mongoose');
-
-/**
- * Order Item Schema (embedded)
- * Represents individual items in an order
- */
 const orderItemSchema = new mongoose.Schema(
     {
         _id: String,
@@ -86,6 +81,21 @@ const orderSchema = new mongoose.Schema(
             type: Number,
             required: [true, 'Order amount is required'],
         },
+        itemsTotal: {
+            type: Number,
+            required: true,
+        },
+        deliveryCharge: {
+            type: Number,
+            required: true,
+            default: 60,
+        },
+        shippingZone: {
+            type: String,
+            enum: ['dhaka_in', 'dhaka_out'],
+            required: true,
+            default: 'dhaka_in',
+        },
         items: [orderItemSchema],
         date: {
             type: String,
@@ -128,10 +138,7 @@ const orderSchema = new mongoose.Schema(
         timestamps: true,
         collection: 'OrderHistory',
     }
-);
-
-// Indexes for common queries
-// orderSchema.index({ orderId: 1 }); // Removed duplicate
+); 
 orderSchema.index({ email: 1 });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ 'courierInfo.trackingCode': 1 });
